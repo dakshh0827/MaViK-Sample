@@ -1,11 +1,16 @@
 import express from 'express';
 import monitoringController from '../controllers/monitoring.controller.js';
-import authMiddleware from '../middleware/auth.js';
-import { isAuthenticated } from '../middleware/rbac.js';
+import authMiddleware from '../middlewares/auth.js';
+import { isAuthenticated } from '../middlewares/rbac.js';
 
 const router = express.Router();
 
-// All monitoring routes require authentication
+// This endpoint is for the IoT device, it should be secured with an API key
+// For simplicity in this project, we'll keep it behind auth, but in production
+// you'd have a separate middleware for API keys.
+router.post('/status/:equipmentId', authMiddleware, monitoringController.updateEquipmentStatus);
+
+// All other monitoring routes require user authentication
 router.use(authMiddleware);
 
 // Get dashboard overview
@@ -15,9 +20,7 @@ router.get('/dashboard', isAuthenticated, monitoringController.getDashboardOverv
 router.get('/realtime', isAuthenticated, monitoringController.getRealtimeStatus);
 
 // Get sensor data for specific equipment
+// This uses the *string* equipmentId (e.g., "LAB-001")
 router.get('/sensor/:equipmentId', isAuthenticated, monitoringController.getSensorData);
-
-// Update equipment status (IoT endpoint - can be public with API key)
-router.post('/status/:equipmentId', monitoringController.updateEquipmentStatus);
 
 export default router;

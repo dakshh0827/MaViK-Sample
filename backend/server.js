@@ -1,7 +1,7 @@
 import dotenv from 'dotenv';
 import http from 'http';
 import app from './app.js';
-import { initializeSocketIO } from './websocket/handlers.js';
+import { initializeSocketIO } from './config/socketio.js'; // Updated path
 import logger from './utils/logger.js';
 import prisma from './config/database.js';
 

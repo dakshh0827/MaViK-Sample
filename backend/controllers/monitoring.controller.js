@@ -1,84 +1,122 @@
 import prisma from '../config/database.js';
 import logger from '../utils/logger.js';
-import { filterDataByRole } from '../middleware/rbac.js';
+import { filterDataByRole } from '../middlewares/rbac.js';
+import {
+  broadcastAlert,
+  broadcastNotification,
+  broadcastEquipmentStatus,
+} from '../config/socketio.js';
+import { ALERT_SEVERITY, ALERT_TYPE, NOTIFICATION_TYPE } from '../utils/constants.js';
+
+const asyncHandler = (fn) => (req, res, next) => {
+  Promise.resolve(fn(req, res, next)).catch(next);
+};
 
 class MonitoringController {
   // Get real-time equipment status
-  async getRealtimeStatus(req, res) {
-    try {
-      const roleFilter = filterDataByRole(req);
+  getRealtimeStatus = asyncHandler(async (req, res) => {
+    const roleFilter = filterDataByRole(req);
+    const equipmentStatus = await prisma.equipment.findMany({
+      where: { ...roleFilter, isActive: true },
+      include: {
+        status: true,
+      },
+      orderBy: { name: 'asc' },
+    });
 
-      const equipmentStatus = await prisma.equipment.findMany({
-        where: { ...roleFilter, isActive: true },
-        include: {
-          status: true,
-        },
-        orderBy: { name: 'asc' },
-      });
-
-      res.json({
-        success: true,
-        data: equipmentStatus.map((eq) => ({
-          id: eq.id,
-          equipmentId: eq.equipmentId,
-          name: eq.name,
-          category: eq.category,
-          location: eq.location,
-          status: eq.status?.status || 'OFFLINE',
-          healthScore: eq.status?.healthScore || 0,
-          temperature: eq.status?.temperature,
-          vibration: eq.status?.vibration,
-          energyConsumption: eq.status?.energyConsumption,
-          lastUsedAt: eq.status?.lastUsedAt,
-          updatedAt: eq.status?.updatedAt,
-        })),
-      });
-    } catch (error) {
-      logger.error('Get realtime status error:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Failed to fetch realtime status.',
-        error: error.message,
-      });
-    }
-  }
+    const data = equipmentStatus.map((eq) => ({
+      id: eq.id,
+      equipmentId: eq.equipmentId,
+      name: eq.name,
+      department: eq.department,
+      location: eq.location,
+      status: eq.status?.status || 'OFFLINE',
+      healthScore: eq.status?.healthScore || 0,
+      temperature: eq.status?.temperature,
+      vibration: eq.status?.vibration,
+      energyConsumption: eq.status?.energyConsumption,
+      lastUsedAt: eq.status?.lastUsedAt,
+      updatedAt: eq.status?.updatedAt,
+    }));
+    res.json({ success: true, data });
+  });
 
   // Get equipment sensor data
-  async getSensorData(req, res) {
-    try {
-      const { equipmentId } = req.params;
-      const { hours = 24 } = req.query;
+  getSensorData = asyncHandler(async (req, res) => {
+    const { equipmentId } = req.params; // This is the string ID
+    const { hours = 24 } = req.query;
+    const timeThreshold = new Date(Date.now() - hours * 60 * 60 * 1000);
 
-      const timeThreshold = new Date(Date.now() - hours * 60 * 60 * 1000);
+    const equipment = await prisma.equipment.findUnique({
+      where: { equipmentId },
+      select: { id: true },
+    });
 
-      const sensorData = await prisma.sensorData.findMany({
-        where: {
-          equipmentId,
-          timestamp: { gte: timeThreshold },
-        },
-        orderBy: { timestamp: 'asc' },
-      });
-
-      res.json({
-        success: true,
-        data: sensorData,
-      });
-    } catch (error) {
-      logger.error('Get sensor data error:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Failed to fetch sensor data.',
-        error: error.message,
-      });
+    if (!equipment) {
+      return res.status(404).json({ success: false, message: 'Equipment not found.' });
     }
-  }
+
+    const sensorData = await prisma.sensorData.findMany({
+      where: {
+        equipmentId: equipment.id,
+        timestamp: { gte: timeThreshold },
+      },
+      orderBy: { timestamp: 'asc' },
+    });
+
+    res.json({ success: true, data: sensorData });
+  });
 
   // Update equipment status (IoT endpoint)
-  async updateEquipmentStatus(req, res) {
-    try {
-      const { equipmentId } = req.params;
-      const {
-        status,
+  updateEquipmentStatus = asyncHandler(async (req, res) => {
+    const { equipmentId } = req.params; // String ID from IoT device
+    const {
+      status,
+      temperature,
+      vibration,
+      energyConsumption,
+      pressure,
+      humidity,
+      rpm,
+      voltage,
+      current,
+    } = req.body;
+
+    const equipment = await prisma.equipment.findFirst({
+      where: { equipmentId },
+      select: { id: true, institute: true, name: true },
+    });
+
+    if (!equipment) {
+      return res.status(404).json({
+        success: false,
+        message: 'Equipment not found.',
+      });
+    }
+    
+    const equipmentInternalId = equipment.id;
+
+    const updatedStatus = await prisma.equipmentStatus.upsert({
+      where: { equipmentId: equipmentInternalId },
+      update: {
+        ...(status && { status }),
+        ...(temperature !== undefined && { temperature }),
+        ...(vibration !== undefined && { vibration }),
+        ...(energyConsumption !== undefined && { energyConsumption }),
+        lastUsedAt: new Date(),
+      },
+      create: {
+        equipmentId: equipmentInternalId,
+        status: status || 'OPERATIONAL',
+        temperature,
+        vibration,
+        energyConsumption,
+      },
+    });
+
+    await prisma.sensorData.create({
+      data: {
+        equipmentId: equipmentInternalId,
         temperature,
         vibration,
         energyConsumption,
@@ -87,211 +125,180 @@ class MonitoringController {
         rpm,
         voltage,
         current,
-      } = req.body;
+      },
+    });
 
-      // Find equipment
-      const equipment = await prisma.equipment.findFirst({
-        where: { equipmentId },
-      });
+    // Check for anomalies (async, don't block response)
+    this.checkAnomalies(equipment, req.body).catch((err) => {
+      logger.error('Failed to check anomalies:', err);
+    });
 
-      if (!equipment) {
-        return res.status(404).json({
-          success: false,
-          message: 'Equipment not found.',
-        });
-      }
+    broadcastEquipmentStatus(equipmentInternalId, updatedStatus);
 
-      // Update equipment status
-      const updatedStatus = await prisma.equipmentStatus.upsert({
-        where: { equipmentId: equipment.id },
-        update: {
-          ...(status && { status }),
-          ...(temperature !== undefined && { temperature }),
-          ...(vibration !== undefined && { vibration }),
-          ...(energyConsumption !== undefined && { energyConsumption }),
-          lastUsedAt: new Date(),
-        },
-        create: {
-          equipmentId: equipment.id,
-          status: status || 'OPERATIONAL',
-          temperature,
-          vibration,
-          energyConsumption,
-        },
-      });
-
-      // Store sensor data
-      await prisma.sensorData.create({
-        data: {
-          equipmentId: equipment.id,
-          temperature,
-          vibration,
-          energyConsumption,
-          pressure,
-          humidity,
-          rpm,
-          voltage,
-          current,
-        },
-      });
-
-      // Check for anomalies and create alerts
-      await this.checkAnomalies(equipment.id, {
-        temperature,
-        vibration,
-        energyConsumption,
-      });
-
-      res.json({
-        success: true,
-        message: 'Equipment status updated successfully.',
-        data: updatedStatus,
-      });
-    } catch (error) {
-      logger.error('Update equipment status error:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Failed to update equipment status.',
-        error: error.message,
-      });
-    }
-  }
+    res.json({
+      success: true,
+      message: 'Equipment status updated successfully.',
+      data: updatedStatus,
+    });
+  });
 
   // Check for anomalies and create alerts
-  async checkAnomalies(equipmentId, sensorData) {
+  checkAnomalies = async (equipment, sensorData) => {
     try {
-      const alerts = [];
+      const { id: equipmentId, institute, name: equipmentName } = equipment;
+      const alertsToCreate = [];
 
-      // Temperature threshold (example: > 80°C)
       if (sensorData.temperature && sensorData.temperature > 80) {
-        alerts.push({
+        alertsToCreate.push({
           equipmentId,
-          type: 'HIGH_TEMPERATURE',
-          severity: sensorData.temperature > 100 ? 'CRITICAL' : 'HIGH',
-          title: 'High Temperature Alert',
-          message: `Temperature reading: ${sensorData.temperature}°C`,
+          type: ALERT_TYPE.HIGH_TEMPERATURE,
+          severity: sensorData.temperature > 100 ? ALERT_SEVERITY.CRITICAL : ALERT_SEVERITY.HIGH,
+          title: `High Temperature: ${equipmentName}`,
+          message: `Temperature reached ${sensorData.temperature}°C.`,
         });
       }
-
-      // Vibration threshold (example: > 10 mm/s)
       if (sensorData.vibration && sensorData.vibration > 10) {
-        alerts.push({
+        alertsToCreate.push({
           equipmentId,
-          type: 'ABNORMAL_VIBRATION',
-          severity: sensorData.vibration > 15 ? 'CRITICAL' : 'HIGH',
-          title: 'Abnormal Vibration Detected',
-          message: `Vibration reading: ${sensorData.vibration} mm/s`,
+          type: ALERT_TYPE.ABNORMAL_VIBRATION,
+          severity: sensorData.vibration > 15 ? ALERT_SEVERITY.CRITICAL : ALERT_SEVERITY.HIGH,
+          title: `Abnormal Vibration: ${equipmentName}`,
+          message: `Vibration detected at ${sensorData.vibration} mm/s.`,
         });
       }
-
-      // Energy consumption threshold (example: > 50 kWh)
       if (sensorData.energyConsumption && sensorData.energyConsumption > 50) {
-        alerts.push({
+        alertsToCreate.push({
           equipmentId,
-          type: 'HIGH_ENERGY_CONSUMPTION',
-          severity: 'MEDIUM',
-          title: 'High Energy Consumption',
-          message: `Energy consumption: ${sensorData.energyConsumption} kWh`,
+          type: ALERT_TYPE.HIGH_ENERGY_CONSUMPTION,
+          severity: ALERT_SEVERITY.MEDIUM,
+          title: `High Energy Use: ${equipmentName}`,
+          message: `Energy consumption spiked to ${sensorData.energyConsumption} kWh.`,
         });
       }
 
-      // Create alerts in database
-      if (alerts.length > 0) {
-        await prisma.alert.createMany({
-          data: alerts,
-        });
-      }
-    } catch (error) {
-      logger.error('Check anomalies error:', error);
-    }
-  }
+      if (alertsToCreate.length === 0) return;
 
-  // Get dashboard overview
-  async getDashboardOverview(req, res) {
-    try {
-      const roleFilter = filterDataByRole(req);
+      const usersToNotify = await prisma.user.findMany({
+        where: {
+          isActive: true,
+          OR: [
+            { role: 'POLICY_MAKER' },
+            { role: 'LAB_TECHNICIAN', institute: institute },
+          ],
+        },
+        select: { id: true },
+      });
+      const userIds = usersToNotify.map((u) => u.id);
 
-      const [
-        totalEquipment,
-        activeEquipment,
-        unresolvedAlerts,
-        maintenanceDue,
-        avgHealthScore,
-        recentAlerts,
-        equipmentByStatus,
-      ] = await Promise.all([
-        prisma.equipment.count({ where: { ...roleFilter, isActive: true } }),
-        prisma.equipmentStatus.count({
-          where: {
-            status: { in: ['OPERATIONAL', 'IN_USE'] },
-            equipment: { ...roleFilter, isActive: true },
-          },
-        }),
-        prisma.alert.count({
-          where: {
-            isResolved: false,
-            equipment: roleFilter,
-          },
-        }),
-        prisma.equipmentStatus.count({
-          where: {
-            nextMaintenanceDate: { lte: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) },
-            equipment: { ...roleFilter, isActive: true },
-          },
-        }),
-        prisma.equipmentStatus.aggregate({
-          _avg: { healthScore: true },
-          where: { equipment: { ...roleFilter, isActive: true } },
-        }),
-        prisma.alert.findMany({
-          where: {
-            isResolved: false,
-            equipment: roleFilter,
-          },
-          include: {
-            equipment: {
-              select: {
-                equipmentId: true,
-                name: true,
-              },
+      for (const alertData of alertsToCreate) {
+        const newAlert = await prisma.alert.create({
+          data: {
+            ...alertData,
+            notifications: {
+              create: userIds.map((userId) => ({
+                userId: userId,
+                title: alertData.title,
+                message: alertData.message,
+                type: NOTIFICATION_TYPE.ALERT,
+              })),
             },
           },
-          orderBy: { createdAt: 'desc' },
-          take: 5,
-        }),
-        prisma.equipmentStatus.groupBy({
-          by: ['status'],
-          where: { equipment: { ...roleFilter, isActive: true } },
-          _count: true,
-        }),
-      ]);
-
-      res.json({
-        success: true,
-        data: {
-          overview: {
-            totalEquipment,
-            activeEquipment,
-            unresolvedAlerts,
-            maintenanceDue,
-            avgHealthScore: Math.round(avgHealthScore._avg.healthScore || 0),
+          include: {
+            notifications: true,
+            equipment: { select: { name: true, equipmentId: true } },
           },
-          recentAlerts,
-          equipmentByStatus: equipmentByStatus.map((s) => ({
-            status: s.status,
-            count: s._count,
-          })),
-        },
-      });
+        });
+
+        broadcastAlert(newAlert);
+        for (const notification of newAlert.notifications) {
+          broadcastNotification(notification.userId, notification);
+        }
+        logger.info(`Alert created and notifications sent for equipment ${equipmentId}`);
+      }
     } catch (error) {
-      logger.error('Get dashboard overview error:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Failed to fetch dashboard overview.',
-        error: error.message,
-      });
+      logger.error('Check anomalies service error:', error);
     }
-  }
+  };
+
+  // Get dashboard overview
+  getDashboardOverview = asyncHandler(async (req, res) => {
+    const roleFilter = filterDataByRole(req);
+    const sevenDaysFromNow = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+    const [
+      totalEquipment,
+      activeEquipment,
+      unresolvedAlerts,
+      maintenanceDue,
+      avgHealthScore,
+      recentAlerts,
+      equipmentByStatus,
+    ] = await Promise.all([
+      prisma.equipment.count({ where: { ...roleFilter, isActive: true } }),
+      prisma.equipmentStatus.count({
+        where: {
+          status: { in: ['OPERATIONAL', 'IN_USE'] },
+          equipment: { ...roleFilter, isActive: true },
+        },
+      }),
+      prisma.alert.count({
+        where: {
+          isResolved: false,
+          equipment: roleFilter,
+        },
+      }),
+      prisma.maintenanceLog.count({
+        where: {
+          status: { in: ['SCHEDULED', 'OVERDUE'] },
+          scheduledDate: { lte: sevenDaysFromNow },
+          equipment: { ...roleFilter, isActive: true },
+        },
+      }),
+      prisma.equipmentStatus.aggregate({
+        _avg: { healthScore: true },
+        where: { equipment: { ...roleFilter, isActive: true } },
+      }),
+      prisma.alert.findMany({
+        where: {
+          isResolved: false,
+          equipment: roleFilter,
+        },
+        include: {
+          equipment: {
+            select: {
+              equipmentId: true,
+              name: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+      }),
+      prisma.equipmentStatus.groupBy({
+        by: ['status'],
+        where: { equipment: { ...roleFilter, isActive: true } },
+        _count: true,
+      }),
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        overview: {
+          totalEquipment,
+          activeEquipment,
+          unresolvedAlerts,
+          maintenanceDue,
+          avgHealthScore: Math.round(avgHealthScore._avg.healthScore || 0),
+        },
+        recentAlerts,
+        equipmentByStatus: equipmentByStatus.map((s) => ({
+          status: s.status,
+          count: s._count,
+        })),
+      },
+    });
+  });
 }
 
 export default new MonitoringController();

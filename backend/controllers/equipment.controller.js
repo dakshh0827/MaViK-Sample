@@ -1,6 +1,6 @@
 import prisma from '../config/database.js';
 import logger from '../utils/logger.js';
-import { filterDataByRole } from '../middleware/rbac.js';
+import { filterDataByRole } from '../middlewares/rbac.js';
 
 class EquipmentController {
   // Get all equipment

@@ -1,7 +1,7 @@
 import express from 'express';
 import equipmentController from '../controllers/equipment.controller.js';
-import authMiddleware from '../middleware/auth.js';
-import { can } from '../middleware/rbac.js';
+import authMiddleware from '../middlewares/auth.js';
+import { can } from '../middlewares/rbac.js';
 
 const router = express.Router();
 

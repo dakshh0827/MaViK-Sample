@@ -3,8 +3,9 @@ import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import routes from './routes/index.js';
-import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
+import { errorHandler, notFoundHandler } from './middlewares/errorHandler.js';
 import logger from './utils/logger.js';
+import { apiLimiter } from './middlewares/rateLimiter.js';
 
 const app = express();
 
@@ -45,6 +46,9 @@ app.get('/health', (req, res) => {
     environment: process.env.NODE_ENV,
   });
 });
+
+// Apply general rate limiter to all API routes
+app.use('/api', apiLimiter);
 
 // API routes
 app.use('/api', routes);
