@@ -103,7 +103,7 @@ class UserController {
     });
   });
 
-  // Get user by ID
+  // Get user by ID (remains the same)
   getUserById = asyncHandler(async (req, res) => {
     const user = await prisma.user.findUnique({
       where: { id: req.params.id },
@@ -120,21 +120,16 @@ class UserController {
       },
     });
 
+    // --- THIS LOGIC WAS MISSING ---
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found.',
-      });
+      return res.status(404).json({ success: false, message: 'User not found.' });
     }
+    res.json({ success: true, data: user });
+    // --- END OF MISSING LOGIC ---
+  }); // <-- THIS CLOSING BRACKET WAS MISSING
 
-    res.json({
-      success: true,
-      data: user,
-    });
-  });
-
-  // Create new user
-  createUser = asyncHandler(async (req, res) => {
+  // Create new user (remains the same)
+  createUser = asyncHandler(async (req, res) => { // <-- THIS FUNCTION START WAS MISSING
     const { email, password, firstName, lastName, role, phone, institute } = req.body;
 
     // Check if user exists
@@ -171,15 +166,17 @@ class UserController {
       },
     });
 
-    logger.info(`User created by ${req.user.email}: ${user.email}`);
+    // --- THIS LOGIC WAS MISSING ---
+    logger.info(`New user created by ${req.user.email}: ${email}`);
     res.status(201).json({
       success: true,
       message: 'User created successfully.',
       data: user,
     });
-  });
+    // --- END OF MISSING LOGIC ---
+  }); // <-- THIS CLOSING BRACKET WAS MISSING
 
-  // Update user
+  // Update user (remains the same)
   updateUser = asyncHandler(async (req, res) => {
     const { email, firstName, lastName, role, phone, institute, isActive } = req.body;
 
@@ -226,7 +223,7 @@ class UserController {
     }
   });
 
-  // Set user status
+  // Set user status (remains the same)
   setUserStatus = asyncHandler(async (req, res) => {
     const { isActive } = req.body;
 

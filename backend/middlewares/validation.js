@@ -1,97 +1,192 @@
 import { body, validationResult } from 'express-validator';
-import { USER_ROLES } from '../utils/constants.js';
 
 /**
- * Middleware to handle validation errors from express-validator.
+ * Middleware to handle validation errors
  */
-export const handleValidationErrors = (req, res, next) => {
+const handleValidationErrors = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    return res.status(400).json({ success: false, errors: errors.array() });
+    return res.status(400).json({
+      success: false,
+      message: 'Validation failed',
+      errors: errors.array().map((err) => ({
+        field: err.path,
+        message: err.msg,
+      })),
+    });
   }
   next();
 };
 
-// --- Auth Validations ---
-
+/**
+ * Registration validation
+ */
 export const registerValidation = [
-  body('email').isEmail().withMessage('Valid email is required'),
+  body('email')
+    .isEmail()
+    .normalizeEmail()
+    .withMessage('Please provide a valid email address'),
   body('password')
     .isLength({ min: 8 })
-    .withMessage('Password must be at least 8 characters'),
-  body('firstName').notEmpty().withMessage('First name is required'),
-  body('lastName').notEmpty().withMessage('Last name is required'),
+    .withMessage('Password must be at least 8 characters long')
+    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/)
+    .withMessage(
+      'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character'
+    ),
+  body('firstName')
+    .trim()
+    .isLength({ min: 2 })
+    .withMessage('First name must be at least 2 characters long'),
+  body('lastName')
+    .trim()
+    .isLength({ min: 2 })
+    .withMessage('Last name must be at least 2 characters long'),
   body('role')
     .optional()
-    .isIn(USER_ROLES)
+    .isIn(['TRAINER', 'MANAGER', 'POLICYMAKER'])
     .withMessage('Invalid role'),
-  body('institute').optional().isString(),
+  body('phone')
+    .optional()
+    .isMobilePhone()
+    .withMessage('Please provide a valid phone number'),
+  body('institute')
+    .optional()
+    .trim()
+    .isLength({ min: 2 })
+    .withMessage('Institute name must be at least 2 characters long'),
   handleValidationErrors,
 ];
 
+/**
+ * Login validation
+ */
 export const loginValidation = [
-  body('email').isEmail().withMessage('Valid email is required'),
-  body('password').notEmpty().withMessage('Password is required'),
+  body('email')
+    .isEmail()
+    .normalizeEmail()
+    .withMessage('Please provide a valid email address'),
+  body('password')
+    .notEmpty()
+    .withMessage('Password is required'),
   handleValidationErrors,
 ];
 
+/**
+ * Verify OTP validation
+ */
+export const verifyOTPValidation = [
+  body('email')
+    .isEmail()
+    .normalizeEmail()
+    .withMessage('Please provide a valid email address'),
+  body('otp')
+    .isLength({ min: 6, max: 6 })
+    .isNumeric()
+    .withMessage('OTP must be a 6-digit number'),
+  handleValidationErrors,
+];
+
+/**
+ * Resend OTP validation
+ */
+export const resendOTPValidation = [
+  body('email')
+    .isEmail()
+    .normalizeEmail()
+    .withMessage('Please provide a valid email address'),
+  body('purpose')
+    .optional()
+    .isIn(['REGISTRATION', 'LOGIN'])
+    .withMessage('Invalid OTP purpose'),
+  handleValidationErrors,
+];
+
+/**
+ * Change password validation
+ */
 export const changePasswordValidation = [
-  body('currentPassword').notEmpty().withMessage('Current password is required'),
+  body('currentPassword')
+    .notEmpty()
+    .withMessage('Current password is required'),
   body('newPassword')
     .isLength({ min: 8 })
-    .withMessage('New password must be at least 8 characters'),
+    .withMessage('New password must be at least 8 characters long')
+    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/)
+    .withMessage(
+      'New password must contain at least one uppercase letter, one lowercase letter, one number, and one special character'
+    ),
   handleValidationErrors,
 ];
 
-// --- User Management Validations ---
-
+/**
+ * Create user validation (for admin)
+ */
 export const createUserValidation = [
-  body('email').isEmail().withMessage('Valid email is required'),
+  body('email')
+    .isEmail()
+    .normalizeEmail()
+    .withMessage('Please provide a valid email address'),
   body('password')
     .isLength({ min: 8 })
-    .withMessage('Password must be at least 8 characters'),
-  body('firstName').notEmpty().withMessage('First name is required'),
-  body('lastName').notEmpty().withMessage('Last name is required'),
+    .withMessage('Password must be at least 8 characters long'),
+  body('firstName')
+    .trim()
+    .isLength({ min: 2 })
+    .withMessage('First name must be at least 2 characters long'),
+  body('lastName')
+    .trim()
+    .isLength({ min: 2 })
+    .withMessage('Last name must be at least 2 characters long'),
   body('role')
-    .isIn(USER_ROLES)
+    .isIn(['TRAINER', 'MANAGER', 'POLICYMAKER'])
     .withMessage('Invalid role'),
-  body('institute').optional().isString(),
+  body('phone')
+    .optional()
+    .isMobilePhone()
+    .withMessage('Please provide a valid phone number'),
+  body('institute')
+    .optional()
+    .trim()
+    .isLength({ min: 2 })
+    .withMessage('Institute name must be at least 2 characters long'),
   handleValidationErrors,
 ];
 
+/**
+ * Update user validation
+ */
 export const updateUserValidation = [
-  body('email').isEmail().withMessage('Valid email is required'),
-  body('firstName').notEmpty().withMessage('First name is required'),
-  body('lastName').notEmpty().withMessage('Last name is required'),
+  body('email')
+    .optional()
+    .isEmail()
+    .normalizeEmail()
+    .withMessage('Please provide a valid email address'),
+  body('firstName')
+    .optional()
+    .trim()
+    .isLength({ min: 2 })
+    .withMessage('First name must be at least 2 characters long'),
+  body('lastName')
+    .optional()
+    .trim()
+    .isLength({ min: 2 })
+    .withMessage('Last name must be at least 2 characters long'),
   body('role')
-    .isIn(USER_ROLES)
+    .optional()
+    .isIn(['TRAINER', 'MANAGER', 'POLICYMAKER'])
     .withMessage('Invalid role'),
-  body('institute').optional().isString(),
-  handleValidationErrors,
-];
-
-// --- Maintenance Validations ---
-
-export const maintenanceLogValidation = [
-  body('equipmentId').isMongoId().withMessage('Valid equipment ID is required'),
-  body('type').notEmpty().withMessage('Maintenance type is required'),
-  body('status').notEmpty().withMessage('Maintenance status is required'),
-  body('scheduledDate').isISO8601().withMessage('Valid scheduled date is required'),
-  body('description').notEmpty().withMessage('Description is required'),
-  handleValidationErrors,
-];
-
-// --- Report Validations ---
-
-export const reportValidation = [
-  body('reportType').notEmpty().withMessage('Report type is required'),
-  body('dateFrom').isISO8601().withMessage('Valid start date is required'),
-  body('dateTo').isISO8601().withMessage('Valid end date is required'),
-  handleValidationErrors,
-];
-
-// --- Chatbot Validations ---
-export const chatbotValidation = [
-  body('message').notEmpty().withMessage('Message is required'),
+  body('phone')
+    .optional()
+    .isMobilePhone()
+    .withMessage('Please provide a valid phone number'),
+  body('institute')
+    .optional()
+    .trim()
+    .isLength({ min: 2 })
+    .withMessage('Institute name must be at least 2 characters long'),
+  body('isActive')
+    .optional()
+    .isBoolean()
+    .withMessage('isActive must be a boolean'),
   handleValidationErrors,
 ];

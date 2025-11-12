@@ -10,27 +10,64 @@ datasource db {
   url      = "mongodb+srv://dakshthakran05_db_user:XNuoDz8HxynA0iYG@cluster0.9awo5nj.mongodb.net/SIH_Finals?appName=Cluster0"
 }
 
-// User Model with RBAC
+// Updates for MongoDB compatibility
+
+// User model - Update these fields
 model User {
-  id                String         @id @default(auto()) @map("_id") @db.ObjectId
-  email             String         @unique
-  password          String
-  firstName         String
-  lastName          String
-  role              UserRole       @default(TRAINER)
-  phone             String?
-  isActive          Boolean        @default(true)
-  institute         String?        // Institute/Lab name
-  createdAt         DateTime       @default(now())
-  updatedAt         DateTime       @updatedAt
-  
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  email           String   @unique
+  password        String?  // Nullable for OAuth users
+  firstName       String
+  lastName        String
+  role            UserRole     @default(TRAINER)
+  phone           String?
+  institute       String?
+  isActive        Boolean  @default(true)
+  isEmailVerified Boolean  @default(false)  // NEW FIELD
+  authProvider    AuthProvider @default(CREDENTIALS)  // NEW FIELD
+  googleId        String?  // NEW FIELD - Remove @unique for MongoDB
+  githubId        String?  // NEW FIELD - Remove @unique for MongoDB
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
   // Relations
   notifications     Notification[]
   maintenanceLogs   MaintenanceLog[]
   reports           Report[]
   chatMessages      ChatMessage[]
-  
+
+  @@unique([googleId])
+  @@unique([githubId])
+  @@index([institute])
   @@map("users")
+}
+
+// NEW MODEL: OTP for email verification
+model OTP {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  email     String
+  otp       String
+  purpose   OTPPurpose  // REGISTRATION or LOGIN
+  isUsed    Boolean  @default(false)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([email, purpose])
+  @@index([expiresAt])
+  @@map("otps")
+}
+
+// NEW ENUM: Auth Provider
+enum AuthProvider {
+  CREDENTIALS
+  GOOGLE
+  GITHUB
+}
+
+// NEW ENUM: OTP Purpose
+enum OTPPurpose {
+  REGISTRATION
+  LOGIN
 }
 
 enum UserRole {
