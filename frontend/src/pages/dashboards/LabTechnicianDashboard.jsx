@@ -1,5 +1,5 @@
 // =====================================================
-// 20. src/pages/dashboards/LabTechnicianDashboard.jsx
+// 20. src/pages/dashboards/LabTechnicianDashboard.jsx (FIXED)
 // =====================================================
 
 import { useEffect, useState } from "react";
@@ -39,7 +39,10 @@ export default function LabTechnicianDashboard() {
     // Group equipment by lab
     if (equipment.length > 0) {
       const grouped = equipment.reduce((acc, eq) => {
-        const labName = eq.lab?.name || "Unknown";
+        // --- FIX: Use eq.lab.name, not eq.lab?.name ---
+        // The equipment query in equipment.controller.js includes `lab`
+        const labName = eq.lab.name || "Unknown";
+        // --- END FIX ---
         if (!acc[labName]) acc[labName] = [];
         acc[labName].push(eq);
         return acc;
@@ -52,7 +55,11 @@ export default function LabTechnicianDashboard() {
     try {
       await Promise.all([
         fetchOverview(),
-        fetchEquipment({ institute: user?.institute }),
+        // --- THIS IS THE FIX ---
+        // We don't need to send institute. The backend's
+        // auth middleware will scope this request automatically.
+        fetchEquipment(), // <-- REMOVED { institute: user?.institute }
+        // --- END FIX ---
         fetchAlerts({ isResolved: false }),
       ]);
     } catch (error) {

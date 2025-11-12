@@ -1,5 +1,5 @@
 // =====================================================
-// 19. src/pages/dashboards/TrainerDashboard.jsx
+// 19. src/pages/dashboards/TrainerDashboard.jsx (FIXED)
 // =====================================================
 
 import { useEffect, useState } from "react";
@@ -36,7 +36,11 @@ export default function TrainerDashboard() {
     try {
       await Promise.all([
         fetchOverview(),
-        fetchEquipment({ labId: user?.labId }),
+        // --- THIS IS THE FIX ---
+        // We don't need to send labId. The backend's
+        // auth middleware will scope this request automatically.
+        fetchEquipment(), // <-- REMOVED { labId: user?.labId }
+        // --- END FIX ---
         fetchAlerts({ isResolved: false }),
       ]);
     } catch (error) {
@@ -83,10 +87,13 @@ export default function TrainerDashboard() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Trainer Dashboard</h1>
+        {/* --- FIX: Get institute from user object, not user.lab.institute --- */}
+        {/* This relies on your backend fix from our previous chat */}
         <p className="text-gray-600 mt-1">
           Lab: {user?.lab?.name || "Unknown"} | Institute:{" "}
-          {user?.lab?.institute || "Unknown"}
+          {user?.institute || "Unknown"}
         </p>
+        {/* --- END FIX --- */}
       </div>
 
       {/* Stats Grid */}

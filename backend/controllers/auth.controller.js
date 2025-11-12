@@ -108,7 +108,7 @@ register = asyncHandler(async (req, res, next) => {
     lastName,
     role: role || USER_ROLE_ENUM.TRAINER,
     phone,
-    institute: role === USER_ROLE_ENUM.LAB_TECHNICIAN ? institute : null,
+    institute: (role === USER_ROLE_ENUM.LAB_TECHNICIAN || role === USER_ROLE_ENUM.TRAINER) ? institute : null,
     emailVerified: false,
     authProvider: AUTH_PROVIDER_ENUM.CREDENTIAL,
   };

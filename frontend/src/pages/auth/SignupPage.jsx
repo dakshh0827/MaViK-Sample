@@ -1,5 +1,5 @@
 // =====================================================
-// 17. src/pages/auth/SignupPage.jsx
+// 17. src/pages/auth/SignupPage.jsx (FIXED)
 // =====================================================
 
 import { useState } from "react";
@@ -50,10 +50,15 @@ export default function SignupPage() {
       return;
     }
 
-    if (formData.role === "LAB_TECHNICIAN" && !formData.institute) {
-      setError("Institute is required for Lab Technicians");
+    // --- FIX: Institute is now required for Lab Techs AND Trainers ---
+    if (
+      (formData.role === "LAB_TECHNICIAN" || formData.role === "TRAINER") &&
+      !formData.institute
+    ) {
+      setError("Institute is required for Lab Technicians and Trainers");
       return;
     }
+    // --- END FIX ---
 
     if (formData.role === "TRAINER" && !formData.labId) {
       setError("Lab ID is required for Trainers");
@@ -63,11 +68,15 @@ export default function SignupPage() {
     setIsLoading(true);
 
     try {
+      // authStore's register(userData) already sends the full formData object.
+      // No need to change authStore, just send the correct data from here.
       const { confirmPassword, ...registerData } = formData;
       await register(registerData);
       navigate("/verify-email", { state: { email: formData.email } });
     } catch (err) {
-      setError(err.message || "Registration failed. Please try again.");
+      setError(
+        err.message || "Registration failed. Please try again or check your inputs."
+      );
     } finally {
       setIsLoading(false);
     }
@@ -182,8 +191,9 @@ export default function SignupPage() {
               </select>
             </div>
 
-            {/* Conditional Fields */}
-            {formData.role === "LAB_TECHNICIAN" && (
+            {/* --- FIX: Conditional Fields for Institute --- */}
+            {(formData.role === "LAB_TECHNICIAN" ||
+              formData.role === "TRAINER") && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Institute Name *
@@ -201,7 +211,9 @@ export default function SignupPage() {
                 </div>
               </div>
             )}
+            {/* --- END FIX --- */}
 
+            {/* Conditional Field for Lab ID */}
             {formData.role === "TRAINER" && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
