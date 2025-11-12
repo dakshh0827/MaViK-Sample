@@ -14,6 +14,29 @@ export const USER_ROLE_ENUM = {
  */
 export const USER_ROLES = Object.values(USER_ROLE_ENUM);
 
+// --- NEWLY ADDED ---
+
+/**
+ * Auth Provider Enum
+ * Matches the Prisma schema.
+ */
+export const AUTH_PROVIDER_ENUM = {
+  CREDENTIAL: 'CREDENTIAL',
+  GOOGLE: 'GOOGLE',
+  GITHUB: 'GITHUB',
+};
+
+/**
+ * OTP Purpose Enum
+ * Matches the Prisma schema.
+ */
+export const OTP_PURPOSE_ENUM = {
+  REGISTRATION: 'REGISTRATION',
+  LOGIN: 'LOGIN',
+};
+
+// --- END NEWLY ADDED ---
+
 /**
  * Alert Types Enum
  * Matches the Prisma schema.

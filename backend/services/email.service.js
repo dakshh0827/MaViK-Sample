@@ -1,48 +1,11 @@
+import transporter from '../config/email.js';
 import logger from '../utils/logger.js';
 
-// Dynamic import to avoid initialization issues
-let transporter = null;
-
 class EmailService {
-  /**
-   * Get transporter instance
-   */
-  async getTransporter() {
-    if (!transporter) {
-      const emailConfig = await import('../config/email.js');
-      transporter = emailConfig.default;
-    }
-    return transporter;
-  }
-
-  /**
-   * Check if email service is configured
-   */
-  async isConfigured() {
-    const trans = await this.getTransporter();
-    return trans !== null;
-  }
-
   /**
    * Send OTP email
    */
   async sendOTP(email, otp, purpose = 'verification') {
-    const configured = await this.isConfigured();
-    
-    if (!configured) {
-      logger.warn(`Email service not configured. OTP for ${email}: ${otp}`);
-      // In development, log the OTP to console
-      if (process.env.NODE_ENV === 'development') {
-        console.log('\n===========================================');
-        console.log(`🔐 OTP for ${email}: ${otp}`);
-        console.log('   Purpose:', purpose);
-        console.log('   Expires in: 10 minutes');
-        console.log('===========================================\n');
-      }
-      return { success: true, messageId: 'dev-mode' };
-    }
-
-    const trans = await this.getTransporter();
     const subject = purpose === 'login' ? 'Your Login OTP' : 'Verify Your Email';
     const message = purpose === 'login' 
       ? `Your OTP for login is: ${otp}. It will expire in 10 minutes.`
@@ -89,22 +52,11 @@ class EmailService {
     };
 
     try {
-      const info = await trans.sendMail(mailOptions);
+      const info = await transporter.sendMail(mailOptions);
       logger.info(`OTP email sent to ${email}: ${info.messageId}`);
       return { success: true, messageId: info.messageId };
     } catch (error) {
-      logger.error(`Error sending OTP email to ${email}:`, error.message);
-      
-      // Fallback to console in development
-      if (process.env.NODE_ENV === 'development') {
-        console.log('\n===========================================');
-        console.log('⚠️  Email sending failed. Using console fallback:');
-        console.log(`🔐 OTP for ${email}: ${otp}`);
-        console.log('   Purpose:', purpose);
-        console.log('===========================================\n');
-        return { success: true, messageId: 'fallback-mode' };
-      }
-      
+      logger.error(`Error sending OTP email to ${email}:`, error);
       throw new Error('Failed to send OTP email');
     }
   }
@@ -113,14 +65,6 @@ class EmailService {
    * Send welcome email
    */
   async sendWelcomeEmail(email, name) {
-    const configured = await this.isConfigured();
-    
-    if (!configured) {
-      logger.info(`Welcome email would be sent to ${email} (email service not configured)`);
-      return { success: true, messageId: 'dev-mode' };
-    }
-
-    const trans = await this.getTransporter();
     const mailOptions = {
       from: `"${process.env.APP_NAME || 'Your App'}" <${process.env.SMTP_USER}>`,
       to: email,
@@ -157,11 +101,11 @@ class EmailService {
     };
 
     try {
-      const info = await trans.sendMail(mailOptions);
+      const info = await transporter.sendMail(mailOptions);
       logger.info(`Welcome email sent to ${email}: ${info.messageId}`);
       return { success: true, messageId: info.messageId };
     } catch (error) {
-      logger.error(`Error sending welcome email to ${email}:`, error.message);
+      logger.error(`Error sending welcome email to ${email}:`, error);
       // Don't throw error for welcome email failure
       return { success: false, error: error.message };
     }

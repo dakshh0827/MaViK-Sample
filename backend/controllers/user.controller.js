@@ -1,13 +1,16 @@
 import bcrypt from 'bcryptjs';
 import prisma from '../config/database.js';
 import logger from '../utils/logger.js';
+import { USER_ROLE_ENUM } from '../utils/constants.js';
 
 const asyncHandler = (fn) => (req, res, next) => {
   Promise.resolve(fn(req, res, next)).catch(next);
 };
 
 class UserController {
-  // Get all users (remains the same, useful for admin lists)
+  /**
+   * Gets a paginated list of all users.
+   */
   getAllUsers = asyncHandler(async (req, res) => {
     const { page = 1, limit = 20, role, institute, search } = req.query;
     const skip = (page - 1) * limit;
@@ -34,6 +37,8 @@ class UserController {
           lastName: true,
           role: true,
           institute: true,
+          labId: true,
+          lab: { select: { name: true } },
           isActive: true,
           createdAt: true,
         },
@@ -56,10 +61,8 @@ class UserController {
     });
   });
 
-  // --- NEW FUNCTION ---
   /**
-   * Gets all users for a specific institute.
-   * Used by Policy Makers to "drill down" into an institution.
+   * Gets all users for a specific institute (for Policy Makers).
    */
   getUsersByInstitute = asyncHandler(async (req, res) => {
     const { institute } = req.params;
@@ -67,9 +70,15 @@ class UserController {
     const skip = (page - 1) * limit;
 
     const where = {
-      institute: institute, // The institute name from the URL
-      ...(role && { role }),
+      institute: institute,
+      ...(role && { role }), // Filter by role (LAB_TECHNICIAN or TRAINER)
     };
+    
+    // If filtering for trainers, we should look by lab institute
+    if (role === USER_ROLE_ENUM.TRAINER) {
+        delete where.institute;
+        where.lab = { institute: institute };
+    }
 
     const [users, total] = await Promise.all([
       prisma.user.findMany({
@@ -83,6 +92,7 @@ class UserController {
           phone: true,
           isActive: true,
           createdAt: true,
+          lab: { select: { id: true, name: true } },
         },
         skip: parseInt(skip),
         take: parseInt(limit),
@@ -103,7 +113,9 @@ class UserController {
     });
   });
 
-  // Get user by ID (remains the same)
+  /**
+   * Gets a single user by their ID.
+   */
   getUserById = asyncHandler(async (req, res) => {
     const user = await prisma.user.findUnique({
       where: { id: req.params.id },
@@ -115,22 +127,24 @@ class UserController {
         role: true,
         phone: true,
         institute: true,
+        labId: true,
+        lab: { select: { name: true } },
         isActive: true,
         createdAt: true,
       },
     });
 
-    // --- THIS LOGIC WAS MISSING ---
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found.' });
     }
     res.json({ success: true, data: user });
-    // --- END OF MISSING LOGIC ---
-  }); // <-- THIS CLOSING BRACKET WAS MISSING
+  });
 
-  // Create new user (remains the same)
-  createUser = asyncHandler(async (req, res) => { // <-- THIS FUNCTION START WAS MISSING
-    const { email, password, firstName, lastName, role, phone, institute } = req.body;
+  /**
+   * Creates a new user (admin action).
+   */
+  createUser = asyncHandler(async (req, res) => {
+    const { email, password, firstName, lastName, role, phone, institute, labId } = req.body;
 
     // Check if user exists
     const existingUser = await prisma.user.findUnique({ where: { email } });
@@ -140,6 +154,20 @@ class UserController {
         message: 'User with this email already exists.',
       });
     }
+
+    // --- NEW: Lab ID Translation ---
+    let labInternalId = null;
+    if (role === USER_ROLE_ENUM.TRAINER) {
+      if (!labId) {
+        return res.status(400).json({ success: false, message: 'labId is required for Trainers.' });
+      }
+      const lab = await prisma.lab.findUnique({ where: { labId: labId } }); // Find lab by PUBLIC ID
+      if (!lab) {
+        return res.status(400).json({ success: false, message: 'Invalid Lab ID provided.' });
+      }
+      labInternalId = lab.id; // Get the internal ObjectId for the relation
+    }
+    // --- END NEW ---
 
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -153,7 +181,10 @@ class UserController {
         lastName,
         role,
         phone,
-        institute,
+        institute: role === USER_ROLE_ENUM.LAB_TECHNICIAN ? institute : null,
+        labId: labInternalId, // Use the translated internal ID
+        emailVerified: true, // Admin-created users are pre-verified
+        authProvider: AUTH_PROVIDER_ENUM.CREDENTIAL,
       },
       select: {
         id: true,
@@ -162,23 +193,35 @@ class UserController {
         lastName: true,
         role: true,
         institute: true,
+        labId: true,
         createdAt: true,
       },
     });
 
-    // --- THIS LOGIC WAS MISSING ---
     logger.info(`New user created by ${req.user.email}: ${email}`);
     res.status(201).json({
       success: true,
       message: 'User created successfully.',
       data: user,
     });
-    // --- END OF MISSING LOGIC ---
-  }); // <-- THIS CLOSING BRACKET WAS MISSING
+  });
 
-  // Update user (remains the same)
+  /**
+   * Updates an existing user (admin action).
+   */
   updateUser = asyncHandler(async (req, res) => {
-    const { email, firstName, lastName, role, phone, institute, isActive } = req.body;
+    const { email, firstName, lastName, role, phone, institute, labId, isActive } = req.body;
+
+    // --- NEW: Lab ID Translation ---
+    let labInternalId = undefined;
+    if (role === USER_ROLE_ENUM.TRAINER && labId) {
+      const lab = await prisma.lab.findUnique({ where: { labId: labId } }); // Find lab by PUBLIC ID
+      if (!lab) {
+        return res.status(400).json({ success: false, message: 'Invalid Lab ID provided.' });
+      }
+      labInternalId = lab.id; // Get the internal ObjectId for the relation
+    }
+    // --- END NEW ---
 
     const dataToUpdate = {
       email,
@@ -186,10 +229,17 @@ class UserController {
       lastName,
       role,
       phone,
-      institute,
+      institute: role === USER_ROLE_ENUM.LAB_TECHNICIAN ? institute : null,
+      labId: role === USER_ROLE_ENUM.TRAINER ? labInternalId : null, // Use translated ID or nullify
       isActive,
     };
     
+    // If role is not being changed, don't nullify other fields
+    if (!role) {
+        delete dataToUpdate.institute;
+        delete dataToUpdate.labId;
+    }
+
     // Remove undefined fields
     Object.keys(dataToUpdate).forEach(
       (key) => dataToUpdate[key] === undefined && delete dataToUpdate[key]
@@ -206,6 +256,7 @@ class UserController {
           lastName: true,
           role: true,
           institute: true,
+          labId: true,
           isActive: true,
         },
       });
@@ -223,7 +274,9 @@ class UserController {
     }
   });
 
-  // Set user status (remains the same)
+  /**
+   * Activates or deactivates a user.
+   */
   setUserStatus = asyncHandler(async (req, res) => {
     const { isActive } = req.body;
 
@@ -231,8 +284,7 @@ class UserController {
       return res.status(400).json({ success: false, message: 'isActive must be a boolean.' });
     }
 
-    // Prevent admin from deactivating themselves
-    if (req.params.id === req.user.id && !isActive) {
+    if (req.params.id === req.user.userId && !isActive) {
       return res.status(403).json({ success: false, message: 'You cannot deactivate your own account.' });
     }
 

@@ -7,7 +7,7 @@ dotenv.config();
 let transporter = null;
 
 if (process.env.SMTP_USER && process.env.SMTP_PASS) {
-  const smtpConfig = {
+  transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST || 'smtp.gmail.com',
     port: parseInt(process.env.SMTP_PORT) || 587,
     secure: false, // true for 465, false for other ports
@@ -15,28 +15,15 @@ if (process.env.SMTP_USER && process.env.SMTP_PASS) {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASS,
     },
-    // Additional options for better compatibility
-    tls: {
-      ciphers: 'SSLv3',
-      rejectUnauthorized: false,
-    },
-    debug: process.env.NODE_ENV === 'development', // Enable debug in development
-    logger: process.env.NODE_ENV === 'development', // Enable logging in development
-  };
-
-  transporter = nodemailer.createTransport(smtpConfig);
+  });
 
   // Verify connection (non-blocking)
   transporter.verify((error, success) => {
     if (error) {
-      logger.error('⚠️  Email transporter error:', error.message || error);
-      logger.warn('📧 Email functionality will be disabled. Please check your SMTP settings.');
-      logger.warn(`   Host: ${smtpConfig.host}, Port: ${smtpConfig.port}, User: ${smtpConfig.auth.user}`);
-      // Set transporter to null if verification fails
-      transporter = null;
+      logger.error('⚠️  Email transporter error:', error.message);
+      logger.warn('📧 Email functionality will be disabled. Please configure SMTP settings in .env file.');
     } else {
       logger.info('✅ Email server is ready to send messages');
-      logger.info(`   Connected to: ${smtpConfig.host}:${smtpConfig.port}`);
     }
   });
 } else {

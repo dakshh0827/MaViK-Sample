@@ -21,13 +21,15 @@ router.post('/register', authLimiter, registerValidation, authController.registe
 // Step 2: Verify email with OTP
 router.post('/verify-email', otpLimiter, verifyOTPValidation, authController.verifyEmail);
 
-// Resend OTP
-router.post('/resend-otp', otpLimiter, resendOTPValidation, authController.resendOTP);
+// Resend OTP (fixed method name from resendOTP to resendOtp)
+router.post('/resend-otp', otpLimiter, resendOTPValidation, authController.resendOtp);
 
-// Step 1: Initiate login (sends OTP)
-router.post('/login', authLimiter, loginValidation, authController.initiateLogin);
+// Login - supports both direct login and OTP-based login
+// Direct login: POST /login with { email, password }
+// OTP-based login: POST /login with { email, password, requireOtp: true }
+router.post('/login', authLimiter, loginValidation, authController.login);
 
-// Step 2: Complete login with OTP
+// Complete login with OTP (for OTP-based login flow)
 router.post('/login/verify', otpLimiter, verifyOTPValidation, authController.completeLogin);
 
 // ===== OAuth Routes =====

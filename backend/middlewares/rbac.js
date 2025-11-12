@@ -1,10 +1,12 @@
+import { USER_ROLE_ENUM } from '../utils/constants.js';
+
 /**
  * Role-Based Access Control Middleware
- * 
+ *
  * Roles:
- * - POLICY_MAKER: Full access to all features
- * - LAB_TECHNICIAN: Can manage equipment, maintenance, view analytics
- * - USER: View-only access to dashboards and reports
+ * - POLICY_MAKER: Full access.
+ * - LAB_TECHNICIAN: Institute-level access.
+ * - TRAINER: Lab-level access.
  */
 
 const checkRole = (...allowedRoles) => {
@@ -30,61 +32,101 @@ const checkRole = (...allowedRoles) => {
 };
 
 // Predefined role checks
-const isPolicyMaker = checkRole('POLICY_MAKER');
-const isLabTechnicianOrAbove = checkRole('POLICY_MAKER', 'LAB_TECHNICIAN');
-const isAuthenticated = checkRole('POLICY_MAKER', 'LAB_TECHNICIAN', 'USER');
+const isPolicyMaker = checkRole(USER_ROLE_ENUM.POLICY_MAKER);
+const isLabTechnician = checkRole(USER_ROLE_ENUM.LAB_TECHNICIAN); // --- NEW ---
+const isLabTechnicianOrAbove = checkRole(
+  USER_ROLE_ENUM.POLICY_MAKER,
+  USER_ROLE_ENUM.LAB_TECHNICIAN
+);
+const isAuthenticated = checkRole(
+  USER_ROLE_ENUM.POLICY_MAKER,
+  USER_ROLE_ENUM.LAB_TECHNICIAN,
+  USER_ROLE_ENUM.TRAINER
+);
 
 // Permission-based middleware
 const can = {
   // Equipment permissions
-  manageEquipment: checkRole('POLICY_MAKER', 'LAB_TECHNICIAN'),
+  manageEquipment: isLabTechnicianOrAbove,
   viewEquipment: isAuthenticated,
-  
+
   // Maintenance permissions
-  manageMaintenance: checkRole('POLICY_MAKER', 'LAB_TECHNICIAN'),
+  manageMaintenance: isLabTechnicianOrAbove,
   viewMaintenance: isAuthenticated,
-  
+
   // Analytics permissions
-  viewDetailedAnalytics: checkRole('POLICY_MAKER', 'LAB_TECHNICIAN'),
+  viewDetailedAnalytics: isAuthenticated,
   viewBasicAnalytics: isAuthenticated,
-  
+
   // Report permissions
-  generateReports: checkRole('POLICY_MAKER', 'LAB_TECHNICIAN'),
+  generateReports: isLabTechnicianOrAbove,
   viewReports: isAuthenticated,
-  
+
   // Alert permissions
-  manageAlerts: checkRole('POLICY_MAKER', 'LAB_TECHNICIAN'),
+  manageAlerts: isLabTechnicianOrAbove,
   viewAlerts: isAuthenticated,
-  
+
   // User management
-  manageUsers: checkRole('POLICY_MAKER'),
-  
+  manageUsers: isPolicyMaker,
+
+  // Lab management
+  // --- LOGIC FLIPPED AS REQUESTED ---
+  manageLabs: isLabTechnician, // Only Lab Technicians can manage labs
+  viewLabs: isLabTechnicianOrAbove, // Policy Makers can still view labs
+
   // System configuration
-  manageSystem: checkRole('POLICY_MAKER'),
+  manageSystem: isPolicyMaker,
 };
 
-// Data filtering based on role
+/**
+ * Creates a Prisma 'where' filter based on the user's role to restrict data access.
+ */
 const filterDataByRole = (req) => {
-  const { role, institute } = req.user;
-  
-  const filter = {};
-  
-  // POLICY_MAKER can see all data
-  if (role === 'POLICY_MAKER') {
-    return filter;
+  const { role, institute, labId } = req.user;
+
+  switch (role) {
+    /**
+     * POLICY_MAKER can see everything.
+     */
+    case USER_ROLE_ENUM.POLICY_MAKER:
+      return {};
+
+    /**
+     * LAB_TECHNICIAN can see everything within their institute.
+     */
+    case USER_ROLE_ENUM.LAB_TECHNICIAN:
+      if (!institute) {
+        return { id: null }; // Deny access if institute is not set
+      }
+      return {
+        lab: {
+          institute: institute,
+        },
+      };
+
+    /**
+     * TRAINER can see everything within their specific lab.
+     */
+    case USER_ROLE_ENUM.TRAINER:
+      if (!labId) {
+        return { id: null }; // Deny access if lab is not set
+      }
+      return {
+        labId: labId, // This is the INTERNAL labId
+      };
+
+    /**
+     * Default case: deny access.
+     */
+    default:
+      return { id: null };
   }
-  
-  // LAB_TECHNICIAN and USER can only see their institute's data
-  if (institute) {
-    filter.institute = institute;
-  }
-  
-  return filter;
 };
 
 export {
   checkRole,
   isPolicyMaker,
+  isLabTechnician,
   isLabTechnicianOrAbove,
   isAuthenticated,
   can,

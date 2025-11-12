@@ -10,73 +10,88 @@ datasource db {
   url      = "mongodb+srv://dakshthakran05_db_user:XNuoDz8HxynA0iYG@cluster0.9awo5nj.mongodb.net/SIH_Finals?appName=Cluster0"
 }
 
-// Updates for MongoDB compatibility
-
-// User model - Update these fields
+// User model - FIXED: Removed @unique from googleId and githubId
 model User {
-  id              String   @id @default(auto()) @map("_id") @db.ObjectId
-  email           String   @unique
-  password        String?  // Nullable for OAuth users
+  id              String       @id @default(auto()) @map("_id") @db.ObjectId
+  email           String       @unique
+  password        String?
   firstName       String
   lastName        String
   role            UserRole     @default(TRAINER)
   phone           String?
   institute       String?
-  isActive        Boolean  @default(true)
-  isEmailVerified Boolean  @default(false)  // NEW FIELD
-  authProvider    AuthProvider @default(CREDENTIALS)  // NEW FIELD
-  googleId        String?  // NEW FIELD - Remove @unique for MongoDB
-  githubId        String?  // NEW FIELD - Remove @unique for MongoDB
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  labId           String?      @db.ObjectId
+  lab             Lab?         @relation(fields: [labId], references: [id], onDelete: SetNull)
+  isActive        Boolean      @default(true)
+  emailVerified   Boolean      @default(false)
+  authProvider    AuthProvider @default(CREDENTIAL)
+  googleId        String?      // REMOVED @unique
+  githubId        String?      // REMOVED @unique
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
 
   // Relations
   notifications     Notification[]
   maintenanceLogs   MaintenanceLog[]
   reports           Report[]
-  chatMessages      ChatMessage[]
+  chatMessages    ChatMessage[]
 
-  @@unique([googleId])
-  @@unique([githubId])
   @@index([institute])
+  @@index([labId])
+  @@index([googleId]) // Added regular index for faster lookups
+  @@index([githubId]) // Added regular index for faster lookups
   @@map("users")
 }
 
-// NEW MODEL: OTP for email verification
+// Lab model
+model Lab {
+  id        String @id @default(auto()) @map("_id") @db.ObjectId
+  labId     String @unique
+  name      String
+  institute String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  equipments Equipment[]
+  trainers   User[]
+
+  @@index([institute])
+  @@map("labs")
+}
+
+// OTP Model
 model OTP {
-  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  id        String     @id @default(auto()) @map("_id") @db.ObjectId
   email     String
   otp       String
-  purpose   OTPPurpose  // REGISTRATION or LOGIN
-  isUsed    Boolean  @default(false)
+  purpose   OTPPurpose
+  isUsed    Boolean    @default(false)
   expiresAt DateTime
-  createdAt DateTime @default(now())
+  createdAt DateTime   @default(now())
 
   @@index([email, purpose])
   @@index([expiresAt])
   @@map("otps")
 }
 
-// NEW ENUM: Auth Provider
 enum AuthProvider {
-  CREDENTIALS
+  CREDENTIAL
   GOOGLE
   GITHUB
 }
 
-// NEW ENUM: OTP Purpose
 enum OTPPurpose {
   REGISTRATION
   LOGIN
 }
 
 enum UserRole {
-  POLICY_MAKER      // NCVET Officials - Full access
-  LAB_TECHNICIAN    // Lab managers - Equipment management
-  TRAINER           // Regular users - View only
+  POLICY_MAKER
+  LAB_TECHNICIAN
+  TRAINER
 }
 
-// Department Enum
 enum Department {
   MECHANICAL_ENGINEERING
   FITTER_MANUFACTURING
@@ -453,155 +468,144 @@ enum MaterialTestingQualityEquipmentName {
 
 // Equipment Master Data
 model Equipment {
-  id                String              @id @default(auto()) @map("_id") @db.ObjectId
-  equipmentId       String              @unique // Unique identifier like "LAB-001"
-  name              String              // Custom name for the equipment instance
-  department        Department          // Department classification
-  
-  // Machine Category by Department
-  machineCategoryMechanical                   MechanicalMachineCategory?
-  machineCategoryFitter                       FitterMachineCategory?
-  machineCategoryElectrical                   ElectricalMachineCategory?
-  machineCategoryElectronics                  ElectronicsMachineCategory?
-  machineCategoryAutomotive                   AutomotiveMachineCategory?
-  machineCategoryWelding                      WeldingMachineCategory?
-  machineCategoryRefrigerationAC              RefrigerationACMachineCategory?
-  machineCategoryCarpentry                    CarpentryMachineCategory?
-  machineCategoryPlumbing                     PlumbingMachineCategory?
-  machineCategoryAdvancedManufacturing        AdvancedManufacturingMachineCategory?
-  machineCategoryToolDieMaking                ToolDieMakingMachineCategory?
-  machineCategoryAdditiveManufacturing        AdditiveManufacturingMachineCategory?
-  machineCategorySolarInstaller               SolarInstallerMachineCategory?
-  machineCategoryHospitalityKitchen           HospitalityKitchenMachineCategory?
-  machineCategoryHospitalityFrontOffice       HospitalityFrontOfficeMachineCategory?
-  machineCategoryHospitalityHousekeeping      HospitalityHousekeepingMachineCategory?
-  machineCategorySecurityServices             SecurityServicesMachineCategory?
-  machineCategoryITComputerLab                ITComputerLabMachineCategory?
-  machineCategoryTextileSewing                TextileSewingMachineCategory?
-  machineCategoryMaterialTestingQuality       MaterialTestingQualityMachineCategory?
-  
-  // Equipment Name by Department
-  equipmentNameMechanical                     MechanicalEquipmentName?
-  equipmentNameFitter                         FitterEquipmentName?
-  equipmentNameElectrical                     ElectricalEquipmentName?
-  equipmentNameElectronics                    ElectronicsEquipmentName?
-  equipmentNameAutomotive                     AutomotiveEquipmentName?
-  equipmentNameWelding                        WeldingEquipmentName?
-  equipmentNameRefrigerationAC                RefrigerationACEquipmentName?
-  equipmentNameCarpentry                      CarpentryEquipmentName?
-  equipmentNamePlumbing                       PlumbingEquipmentName?
-  equipmentNameAdvancedManufacturing          AdvancedManufacturingEquipmentName?
-  equipmentNameToolDieMaking                  ToolDieMakingEquipmentName?
-  equipmentNameAdditiveManufacturing          AdditiveManufacturingEquipmentName?
-  equipmentNameSolarInstaller                 SolarInstallerEquipmentName?
-  equipmentNameHospitalityKitchen             HospitalityKitchenEquipmentName?
-  equipmentNameHospitalityFrontOffice         HospitalityFrontOfficeEquipmentName?
-  equipmentNameHospitalityHousekeeping        HospitalityHousekeepingEquipmentName?
-  equipmentNameSecurityServices               SecurityServicesEquipmentName?
-  equipmentNameITComputerLab                  ITComputerLabEquipmentName?
-  equipmentNameTextileSewing                  TextileSewingEquipmentName?
-  equipmentNameMaterialTestingQuality         MaterialTestingQualityEquipmentName?
-  
+  id                String       @id @default(auto()) @map("_id") @db.ObjectId
+  equipmentId       String       @unique
+  name              String
+  department        Department
+  labId             String       @db.ObjectId
+  lab               Lab          @relation(fields: [labId], references: [id], onDelete: Restrict)
   manufacturer      String
   model             String
   serialNumber      String?
   purchaseDate      DateTime
   warrantyExpiry    DateTime?
-  location          String              // Lab location
-  institute         String              // Institute name
-  specifications    Json?               // Technical specs
+  specifications    Json?
   imageUrl          String?
-  isActive          Boolean             @default(true)
-  createdAt         DateTime            @default(now())
-  updatedAt         DateTime            @updatedAt
-  
+  isActive          Boolean      @default(true)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  // Machine Category fields
+  machineCategoryMechanical             MechanicalMachineCategory?
+  machineCategoryFitter                 FitterMachineCategory?
+  machineCategoryElectrical             ElectricalMachineCategory?
+  machineCategoryElectronics            ElectronicsMachineCategory?
+  machineCategoryAutomotive             AutomotiveMachineCategory?
+  machineCategoryWelding                WeldingMachineCategory?
+  machineCategoryRefrigerationAC        RefrigerationACMachineCategory?
+  machineCategoryCarpentry              CarpentryMachineCategory?
+  machineCategoryPlumbing               PlumbingMachineCategory?
+  machineCategoryAdvancedManufacturing  AdvancedManufacturingMachineCategory?
+  machineCategoryToolDieMaking          ToolDieMakingMachineCategory?
+  machineCategoryAdditiveManufacturing  AdditiveManufacturingMachineCategory?
+  machineCategorySolarInstaller         SolarInstallerMachineCategory?
+  machineCategoryHospitalityKitchen     HospitalityKitchenMachineCategory?
+  machineCategoryHospitalityFrontOffice HospitalityFrontOfficeMachineCategory?
+  machineCategoryHospitalityHousekeeping HospitalityHousekeepingMachineCategory?
+  machineCategorySecurityServices       SecurityServicesMachineCategory?
+  machineCategoryITComputerLab          ITComputerLabMachineCategory?
+  machineCategoryTextileSewing          TextileSewingMachineCategory?
+  machineCategoryMaterialTestingQuality MaterialTestingQualityMachineCategory?
+
+  // Equipment Name fields
+  equipmentNameMechanical               MechanicalEquipmentName?
+  equipmentNameFitter                   FitterEquipmentName?
+  equipmentNameElectrical               ElectricalEquipmentName?
+  equipmentNameElectronics              ElectronicsEquipmentName?
+  equipmentNameAutomotive               AutomotiveEquipmentName?
+  equipmentNameWelding                  WeldingEquipmentName?
+  equipmentNameRefrigerationAC          RefrigerationACEquipmentName?
+  equipmentNameCarpentry                CarpentryEquipmentName?
+  equipmentNamePlumbing                 PlumbingEquipmentName?
+  equipmentNameAdvancedManufacturing    AdvancedManufacturingEquipmentName?
+  equipmentNameToolDieMaking            ToolDieMakingEquipmentName?
+  equipmentNameAdditiveManufacturing    AdditiveManufacturingEquipmentName?
+  equipmentNameSolarInstaller           SolarInstallerEquipmentName?
+  equipmentNameHospitalityKitchen       HospitalityKitchenEquipmentName?
+  equipmentNameHospitalityFrontOffice   HospitalityFrontOfficeEquipmentName?
+  equipmentNameHospitalityHousekeeping  HospitalityHousekeepingEquipmentName?
+  equipmentNameSecurityServices         SecurityServicesEquipmentName?
+  equipmentNameITComputerLab            ITComputerLabEquipmentName?
+  equipmentNameTextileSewing            TextileSewingEquipmentName?
+  equipmentNameMaterialTestingQuality   MaterialTestingQualityEquipmentName?
+
   // Relations
   status            EquipmentStatus?
   sensorData        SensorData[]
   alerts            Alert[]
   maintenanceLogs   MaintenanceLog[]
   usageAnalytics    UsageAnalytics[]
-  
+
+  @@index([labId])
   @@map("equipment")
 }
 
 // Real-time Equipment Status
 model EquipmentStatus {
-  id                String              @id @default(auto()) @map("_id") @db.ObjectId
-  equipmentId       String              @unique @db.ObjectId
-  equipment         Equipment           @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
-  
-  status            OperationalStatus   @default(IDLE)
-  healthScore       Float               @default(100) // 0-100
-  temperature       Float?              // Celsius
-  vibration         Float?              // mm/s
-  energyConsumption Float?              // kWh
-  runningHours      Float               @default(0)
+  id                  String            @id @default(auto()) @map("_id") @db.ObjectId
+  equipmentId         String            @unique @db.ObjectId
+  equipment           Equipment         @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  status              OperationalStatus @default(IDLE)
+  healthScore         Float             @default(100)
+  temperature         Float?
+  vibration           Float?
+  energyConsumption   Float?
+  runningHours        Float             @default(0)
   lastMaintenanceDate DateTime?
   nextMaintenanceDate DateTime?
-  
-  currentOperator   String?
-  lastUsedAt        DateTime?
-  
-  updatedAt         DateTime            @updatedAt
-  
+  currentOperator     String?
+  lastUsedAt          DateTime?
+  updatedAt           DateTime          @updatedAt
+
   @@map("equipment_status")
 }
 
 enum OperationalStatus {
-  OPERATIONAL       // Working fine
-  IN_USE            // Currently being used
-  IDLE              // Not in use
-  MAINTENANCE       // Under maintenance
-  FAULTY            // Has issues
-  OFFLINE           // Disconnected
-  WARNING           // Warning state
+  OPERATIONAL
+  IN_USE
+  IDLE
+  MAINTENANCE
+  FAULTY
+  OFFLINE
+  WARNING
 }
 
 // IoT Sensor Data (Time-series)
 model SensorData {
-  id                String      @id @default(auto()) @map("_id") @db.ObjectId
-  equipmentId       String      @db.ObjectId
-  equipment         Equipment   @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
-  
-  timestamp         DateTime    @default(now())
+  id                String    @id @default(auto()) @map("_id") @db.ObjectId
+  equipmentId       String    @db.ObjectId
+  equipment         Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  timestamp         DateTime  @default(now())
   temperature       Float?
   vibration         Float?
   energyConsumption Float?
   pressure          Float?
   humidity          Float?
-  rpm               Float?      // Rotations per minute
+  rpm               Float?
   voltage           Float?
   current           Float?
-  
-  // Anomaly detection
-  isAnomaly         Boolean     @default(false)
+  isAnomaly         Boolean   @default(false)
   anomalyScore      Float?
-  
+
   @@map("sensor_data")
   @@index([equipmentId, timestamp(sort: Desc)])
 }
 
 // Alerts & Notifications
 model Alert {
-  id                String        @id @default(auto()) @map("_id") @db.ObjectId
-  equipmentId       String        @db.ObjectId
-  equipment         Equipment     @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
-  
-  type              AlertType
-  severity          AlertSeverity
-  title             String
-  message           String
-  
-  isResolved        Boolean       @default(false)
-  resolvedAt        DateTime?
-  resolvedBy        String?
-  
-  createdAt         DateTime      @default(now())
-  
-  // Relations
-  notifications     Notification[]
-  
+  id            String        @id @default(auto()) @map("_id") @db.ObjectId
+  equipmentId   String        @db.ObjectId
+  equipment     Equipment     @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  type          AlertType
+  severity      AlertSeverity
+  title         String
+  message       String
+  isResolved    Boolean       @default(false)
+  resolvedAt    DateTime?
+  resolvedBy    String?
+  createdAt     DateTime      @default(now())
+  notifications Notification[]
+
   @@map("alerts")
   @@index([equipmentId, createdAt(sort: Desc)])
 }
@@ -620,30 +624,27 @@ enum AlertType {
 }
 
 enum AlertSeverity {
-  CRITICAL          // Immediate action required
-  HIGH              // Action required soon
-  MEDIUM            // Monitor closely
-  LOW               // Informational
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
 }
 
 // User Notifications
 model Notification {
-  id                String      @id @default(auto()) @map("_id") @db.ObjectId
-  userId            String      @db.ObjectId
-  user              User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  alertId           String?     @db.ObjectId
-  alert             Alert?      @relation(fields: [alertId], references: [id], onDelete: Cascade)
-  
-  title             String
-  message           String
-  type              NotificationType
-  isRead            Boolean     @default(false)
-  
-  createdAt         DateTime    @default(now())
-  
+  id        String           @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String           @db.ObjectId
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  alertId   String?          @db.ObjectId
+  alert     Alert?           @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  type      NotificationType
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
   @@map("notifications")
-  @@index([userId, createdAt(sort: Desc)])
+  @@index([userId, createdAt(sort:Desc)])
 }
 
 enum NotificationType {
@@ -656,28 +657,22 @@ enum NotificationType {
 
 // Maintenance Logs
 model MaintenanceLog {
-  id                String            @id @default(auto()) @map("_id") @db.ObjectId
-  equipmentId       String            @db.ObjectId
-  equipment         Equipment         @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
-  
-  type              MaintenanceType
-  status            MaintenanceStatus @default(SCHEDULED)
-  
-  scheduledDate     DateTime
-  completedDate     DateTime?
-  
-  description       String
-  notes             String?
-  cost              Float?
-  
-  technicianId      String            @db.ObjectId
-  technician        User              @relation(fields: [technicianId], references: [id])
-  
-  partsReplaced     Json?             // Array of parts replaced
-  
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
-  
+  id            String            @id @default(auto()) @map("_id") @db.ObjectId
+  equipmentId   String            @db.ObjectId
+  equipment     Equipment         @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  type          MaintenanceType
+  status        MaintenanceStatus @default(SCHEDULED)
+  scheduledDate DateTime
+  completedDate DateTime?
+  description   String
+  notes         String?
+  cost          Float?
+  technicianId  String            @db.ObjectId
+  technician    User              @relation(fields: [technicianId], references: [id])
+  partsReplaced Json?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
   @@map("maintenance_logs")
   @@index([equipmentId, scheduledDate(sort: Desc)])
 }
@@ -700,24 +695,19 @@ enum MaintenanceStatus {
 
 // Usage Analytics
 model UsageAnalytics {
-  id                String      @id @default(auto()) @map("_id") @db.ObjectId
-  equipmentId       String      @db.ObjectId
-  equipment         Equipment   @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
-  
-  date              DateTime
-  
-  totalUsageHours   Float       @default(0)
-  totalDowntime     Float       @default(0)
-  utilizationRate   Float       @default(0) // Percentage
-  efficiency        Float       @default(0) // Percentage
-  
-  sessionsCount     Int         @default(0)
-  avgSessionTime    Float       @default(0) // Minutes
-  
-  energyConsumed    Float       @default(0) // kWh
-  
-  createdAt         DateTime    @default(now())
-  
+  id              String    @id @default(auto()) @map("_id") @db.ObjectId
+  equipmentId     String    @db.ObjectId
+  equipment       Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  date            DateTime
+  totalUsageHours Float     @default(0)
+  totalDowntime   Float     @default(0)
+  utilizationRate Float     @default(0)
+  efficiency      Float     @default(0)
+  sessionsCount   Int       @default(0)
+  avgSessionTime  Float     @default(0)
+  energyConsumed  Float     @default(0)
+  createdAt       DateTime  @default(now())
+
   @@map("usage_analytics")
   @@unique([equipmentId, date])
   @@index([equipmentId, date(sort: Desc)])
@@ -725,21 +715,17 @@ model UsageAnalytics {
 
 // Generated Reports
 model Report {
-  id                String      @id @default(auto()) @map("_id") @db.ObjectId
-  
-  reportType        ReportType
-  title             String
-  dateFrom          DateTime
-  dateTo            DateTime
-  
-  generatedBy       String      @db.ObjectId
-  user              User        @relation(fields: [generatedBy], references: [id])
-  
-  data              Json        // Report data
-  fileUrl           String?     // URL to generated file
-  
-  createdAt         DateTime    @default(now())
-  
+  id          String     @id @default(auto()) @map("_id") @db.ObjectId
+  reportType  ReportType
+  title       String
+  dateFrom    DateTime
+  dateTo      DateTime
+  generatedBy String     @db.ObjectId
+  user        User       @relation(fields: [generatedBy], references: [id])
+  data        Json
+  fileUrl     String?
+  createdAt   DateTime   @default(now())
+
   @@map("reports")
   @@index([generatedBy, createdAt(sort: Desc)])
 }
@@ -758,28 +744,25 @@ enum ReportType {
 
 // Chatbot Messages
 model ChatMessage {
-  id                String      @id @default(auto()) @map("_id") @db.ObjectId
-  userId            String      @db.ObjectId
-  user              User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  message           String
-  response          String?
-  intent            String?     // Classified intent
-  
-  createdAt         DateTime    @default(now())
-  
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String   @db.ObjectId
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  message   String
+  response  String?
+  intent    String?
+  createdAt DateTime @default(now())
+
   @@map("chat_messages")
   @@index([userId, createdAt(sort: Desc)])
 }
 
 // System Configuration
 model SystemConfig {
-  id                String      @id @default(auto()) @map("_id") @db.ObjectId
-  key               String      @unique
-  value             Json
-  description       String?
-  
-  updatedAt         DateTime    @updatedAt
-  
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  key         String   @unique
+  value       Json
+  description String?
+  updatedAt   DateTime @updatedAt
+
   @@map("system_config")
 }
