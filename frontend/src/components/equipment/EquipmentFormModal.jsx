@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import LoadingSpinner from "../common/LoadingSpinner";
 
@@ -71,21 +72,22 @@ export default function EquipmentFormModal({
   equipment = null,
   userDepartment,
   userInstitute,
-  userRole, // Add userRole prop
+  userRole,
 }) {
   const isEditing = !!equipment;
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [availableLabs, setAvailableLabs] = useState([]);
 
-  // For LAB_MANAGER, department is locked to their department
+  // For LAB_MANAGER, department is ALWAYS their department (hidden field)
   // For POLICY_MAKER, they can select any department
   const isPolicyMaker = userRole === "POLICY_MAKER";
+  const isLabManager = userRole === "LAB_MANAGER";
 
   const [formData, setFormData] = useState({
     equipmentId: "",
     name: "",
-    department: isPolicyMaker ? "" : (userDepartment || ""), // Lock department for Lab Managers
+    department: userDepartment || "", // Always use userDepartment initially
     equipmentName: "",
     labId: "",
     manufacturer: "",
@@ -97,16 +99,40 @@ export default function EquipmentFormModal({
     imageUrl: "",
   });
 
+  // Lock body scroll when modal is open
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "unset";
+    }
+
+    return () => {
+      document.body.style.overflow = "unset";
+    };
+  }, [isOpen]);
+
+  // Handle ESC key to close modal
+  useEffect(() => {
+    const handleEscape = (e) => {
+      if (e.key === "Escape" && isOpen) {
+        onClose();
+      }
+    };
+
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [isOpen, onClose]);
+
   useEffect(() => {
     if (equipment) {
-      // Get the equipment-specific name field
       const departmentField = getDepartmentFieldName(equipment.department);
       const equipmentName = equipment[departmentField] || "";
 
       setFormData({
         equipmentId: equipment.equipmentId || "",
         name: equipment.name || "",
-        department: equipment.department || "",
+        department: equipment.department || userDepartment || "",
         equipmentName: equipmentName,
         labId: equipment.lab?.labId || "",
         manufacturer: equipment.manufacturer || "",
@@ -123,13 +149,20 @@ export default function EquipmentFormModal({
           : "",
         imageUrl: equipment.imageUrl || "",
       });
+    } else {
+      // For new equipment, always set department to userDepartment for Lab Managers
+      setFormData(prev => ({
+        ...prev,
+        department: userDepartment || "",
+      }));
     }
-  }, [equipment]);
+  }, [equipment, userDepartment]);
 
   useEffect(() => {
-    // Fetch labs for the user's institute and department
-    fetchLabs();
-  }, [userInstitute, userDepartment]);
+    if (userInstitute && formData.department) {
+      fetchLabs();
+    }
+  }, [userInstitute, formData.department]);
 
   const getDepartmentFieldName = (department) => {
     const fieldMap = {
@@ -148,8 +181,11 @@ export default function EquipmentFormModal({
 
   const fetchLabs = async () => {
     try {
+      // Use formData.department instead of userDepartment for Policy Makers
+      const department = isLabManager ? userDepartment : formData.department;
+      
       const response = await fetch(
-        `/api/labs?institute=${userInstitute}&department=${userDepartment}`,
+        `/api/labs?institute=${userInstitute}&department=${department}`,
         {
           headers: {
             Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
@@ -172,6 +208,12 @@ export default function EquipmentFormModal({
       ...prev,
       [name]: value,
     }));
+    
+    // If department changes and user is Policy Maker, refetch labs
+    if (name === "department" && isPolicyMaker) {
+      setFormData(prev => ({ ...prev, labId: "" })); // Reset lab selection
+    }
+    
     setError("");
   };
 
@@ -211,7 +253,6 @@ export default function EquipmentFormModal({
       const submitData = {
         ...formData,
         specifications,
-        // Remove empty fields
         serialNumber: formData.serialNumber || undefined,
         warrantyExpiry: formData.warrantyExpiry || undefined,
         imageUrl: formData.imageUrl || undefined,
@@ -233,17 +274,22 @@ export default function EquipmentFormModal({
 
   const availableEquipmentNames = DEPARTMENT_EQUIPMENT_NAMES[formData.department] || [];
 
-  return (
+  // Use React Portal to render modal at body level
+  return createPortal(
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+      <div 
+        className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()} // Prevent clicks inside modal from closing it
+      >
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
+        <div className="flex items-center justify-between p-6 border-b border-gray-200 sticky top-0 bg-white z-10">
           <h2 className="text-xl font-semibold text-gray-900">
             {isEditing ? "Edit Equipment" : "Add New Equipment"}
           </h2>
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600 transition-colors"
+            type="button"
           >
             <X className="w-6 h-6" />
           </button>
@@ -293,27 +339,47 @@ export default function EquipmentFormModal({
             />
           </div>
 
-          {/* Department */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Department <span className="text-red-500">*</span>
-            </label>
-            <select
-              name="department"
-              value={formData.department}
-              onChange={handleChange}
-              disabled={isEditing}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100"
-              required
-            >
-              <option value="">Select Department</option>
-              {Object.entries(DEPARTMENT_DISPLAY_NAMES).map(([key, label]) => (
-                <option key={key} value={key}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </div>
+          {/* Department - Only show for Policy Makers */}
+          {isPolicyMaker && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Department <span className="text-red-500">*</span>
+              </label>
+              <select
+                name="department"
+                value={formData.department}
+                onChange={handleChange}
+                disabled={isEditing}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100"
+                required
+              >
+                <option value="">Select Department</option>
+                {Object.entries(DEPARTMENT_DISPLAY_NAMES).map(([key, label]) => (
+                  <option key={key} value={key}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Hidden department field for Lab Managers */}
+          {isLabManager && (
+            <input 
+              type="hidden" 
+              name="department" 
+              value={formData.department} 
+            />
+          )}
+
+          {/* Show department info for Lab Managers (read-only display) */}
+          {isLabManager && (
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <p className="text-sm text-blue-800">
+                <span className="font-medium">Department:</span> {DEPARTMENT_DISPLAY_NAMES[formData.department] || formData.department}
+              </p>
+            </div>
+          )}
 
           {/* Equipment Type (Department-specific) */}
           {availableEquipmentNames.length > 0 && (
@@ -468,7 +534,7 @@ export default function EquipmentFormModal({
           </div>
 
           {/* Actions */}
-          <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-200">
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-200 sticky bottom-0 bg-white">
             <button
               type="button"
               onClick={onClose}
@@ -488,6 +554,7 @@ export default function EquipmentFormModal({
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
