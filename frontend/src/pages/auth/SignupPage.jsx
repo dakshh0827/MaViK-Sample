@@ -1,10 +1,12 @@
-// =====================================================
-// SignupPage.jsx (FIXED - Correct fields for each role)
-// =====================================================
-
-import { useState } from "react";
+/*
+ * =====================================================
+ * frontend/src/pages/auth/SignupPage.jsx (UPDATED)
+ * =====================================================
+ */
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuthStore } from "../../stores/authStore";
+import { useInstituteStore } from "../../stores/instituteStore";
 import {
   Activity,
   User,
@@ -12,7 +14,34 @@ import {
   Lock,
   Building,
   AlertCircle,
+  Hash,
+  Book,
 } from "lucide-react";
+
+// Department names from the schema
+const departments = [
+  "FITTER_MANUFACTURING",
+  "ELECTRICAL_ENGINEERING",
+  "WELDING_FABRICATION",
+  "TOOL_DIE_MAKING",
+  "ADDITIVE_MANUFACTURING",
+  "SOLAR_INSTALLER_PV",
+  "MATERIAL_TESTING_QUALITY",
+  "ADVANCED_MANUFACTURING_CNC",
+  "AUTOMOTIVE_MECHANIC",
+];
+
+const DEPARTMENT_DISPLAY_NAMES = {
+  FITTER_MANUFACTURING: "Fitter/Manufacturing",
+  ELECTRICAL_ENGINEERING: "Electrical Engineering",
+  WELDING_FABRICATION: "Welding & Fabrication",
+  TOOL_DIE_MAKING: "Tool & Die Making",
+  ADDITIVE_MANUFACTURING: "Additive Manufacturing",
+  SOLAR_INSTALLER_PV: "Solar Installer (PV)",
+  MATERIAL_TESTING_QUALITY: "Material Testing/Quality",
+  ADVANCED_MANUFACTURING_CNC: "Advanced Manufacturing/CNC",
+  AUTOMOTIVE_MECHANIC: "Automotive/Mechanic",
+};
 
 export default function SignupPage() {
   const [formData, setFormData] = useState({
@@ -23,7 +52,7 @@ export default function SignupPage() {
     lastName: "",
     role: "TRAINER",
     phone: "",
-    institute: "",
+    instituteId: "", // Changed from 'institute' to 'instituteId'
     department: "",
     labId: "",
   });
@@ -31,11 +60,17 @@ export default function SignupPage() {
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
   const { register } = useAuthStore();
+  const { institutes, fetchInstitutes, isLoading: institutesLoading } =
+    useInstituteStore();
+
+  useEffect(() => {
+    fetchInstitutes();
+  }, [fetchInstitutes]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData({ ...formData, [name]: value });
-    
+
     // Clear error when user starts typing
     if (error) setError("");
   };
@@ -55,25 +90,18 @@ export default function SignupPage() {
       return;
     }
 
-    // Role-specific validation based on backend requirements
-    if (formData.role === "LAB_MANAGER") {
-      if (!formData.institute) {
-        setError("Institute is required for Lab Managers");
+    // UPDATED: Role-specific validation - both roles now require all three fields
+    if (formData.role === "LAB_MANAGER" || formData.role === "TRAINER") {
+      if (!formData.instituteId) {
+        setError("Institute is required for this role");
         return;
       }
       if (!formData.department) {
-        setError("Department is required for Lab Managers");
-        return;
-      }
-    }
-
-    if (formData.role === "TRAINER") {
-      if (!formData.institute) {
-        setError("Institute is required for Trainers");
+        setError("Department is required for this role");
         return;
       }
       if (!formData.labId) {
-        setError("Lab ID is required for Trainers");
+        setError("Lab ID is required for this role");
         return;
       }
     }
@@ -81,47 +109,33 @@ export default function SignupPage() {
     setIsLoading(true);
 
     try {
+      // Destructure to remove frontend-only fields
       const { confirmPassword, ...registerData } = formData;
-      
+
       // Clean up data based on role to match backend expectations
       const cleanData = { ...registerData };
-      
+
       if (formData.role === "POLICY_MAKER") {
         // Policy makers don't need institute, department, or labId
-        delete cleanData.institute;
+        delete cleanData.instituteId;
         delete cleanData.department;
         delete cleanData.labId;
-      } else if (formData.role === "LAB_MANAGER") {
-        // Lab managers need institute and department, but NOT labId
-        delete cleanData.labId;
-      } else if (formData.role === "TRAINER") {
-        // Trainers need institute and labId, but NOT department
-        delete cleanData.department;
       }
+      // No fields deleted for Trainer or Lab Manager - both now send all fields
 
       await register(cleanData);
+      // Navigate to verify-email page, passing email in state
       navigate("/verify-email", { state: { email: formData.email } });
     } catch (err) {
       setError(
         err.message ||
+          err.errors?.[0]?.msg ||
           "Registration failed. Please check your inputs and try again."
       );
     } finally {
       setIsLoading(false);
     }
   };
-
-  const departments = [
-    "FITTER_MANUFACTURING",
-    "ELECTRICAL_ENGINEERING",
-    "WELDING_FABRICATION",
-    "TOOL_DIE_MAKING",
-    "ADDITIVE_MANUFACTURING",
-    "SOLAR_INSTALLER_PV",
-    "MATERIAL_TESTING_QUALITY",
-    "ADVANCED_MANUFACTURING_CNC",
-    "AUTOMOTIVE_MECHANIC",
-  ];
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-blue-50 to-white px-4 py-8">
@@ -151,7 +165,7 @@ export default function SignupPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  First Name *
+                  First Name <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
                   <User className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -168,7 +182,7 @@ export default function SignupPage() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Last Name *
+                  Last Name <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
@@ -185,7 +199,7 @@ export default function SignupPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Email Address *
+                  Email Address <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
                   <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -217,7 +231,7 @@ export default function SignupPage() {
             {/* Role Selection */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Role *
+                Role <span className="text-red-500">*</span>
               </label>
               <select
                 name="role"
@@ -231,85 +245,108 @@ export default function SignupPage() {
                 <option value="POLICY_MAKER">Policy Maker</option>
               </select>
               <p className="text-xs text-gray-500 mt-1">
-                {formData.role === "TRAINER" && "Trainers manage equipment in their assigned lab"}
-                {formData.role === "LAB_MANAGER" && "Lab Managers oversee all labs in their department"}
-                {formData.role === "POLICY_MAKER" && "Policy Makers have system-wide access"}
+                {formData.role === "TRAINER" &&
+                  "Trainers view equipment in their assigned lab"}
+                {formData.role === "LAB_MANAGER" &&
+                  "Lab Managers oversee all labs in their department"}
+                {formData.role === "POLICY_MAKER" &&
+                  "Policy Makers have system-wide access"}
               </p>
             </div>
 
-            {/* Institute (for LAB_MANAGER and TRAINER) */}
-            {(formData.role === "LAB_MANAGER" || formData.role === "TRAINER") && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Institute Name *
-                </label>
-                <div className="relative">
-                  <Building className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-                  <input
-                    type="text"
-                    name="institute"
-                    value={formData.institute}
-                    onChange={handleChange}
-                    className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="e.g., ITI Pusa, Polytechnic College Delhi"
-                    required
-                  />
+            {/* UPDATED: Show all three fields for both LAB_MANAGER and TRAINER */}
+            {(formData.role === "LAB_MANAGER" ||
+              formData.role === "TRAINER") && (
+              <>
+                {/* Institute */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Institute <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <Building className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <select
+                      name="instituteId"
+                      value={formData.instituteId}
+                      onChange={handleChange}
+                      className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      required
+                      disabled={institutesLoading}
+                    >
+                      <option value="">
+                        {institutesLoading
+                          ? "Loading institutes..."
+                          : "Select Institute"}
+                      </option>
+                      {institutes.map((inst) => (
+                        <option key={inst.id} value={inst.instituteId}>
+                          {inst.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
-              </div>
-            )}
 
-            {/* Department (for LAB_MANAGER only) */}
-            {formData.role === "LAB_MANAGER" && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Department *
-                </label>
-                <select
-                  name="department"
-                  value={formData.department}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  required
-                >
-                  <option value="">Select Department</option>
-                  {departments.map((dept) => (
-                    <option key={dept} value={dept}>
-                      {dept.replace(/_/g, " ")}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-xs text-gray-500 mt-1">
-                  You will manage all labs in this department
-                </p>
-              </div>
-            )}
+                {/* Department */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Department <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <Book className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <select
+                      name="department"
+                      value={formData.department}
+                      onChange={handleChange}
+                      className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      required
+                    >
+                      <option value="">Select Department</option>
+                      {departments.map((dept) => (
+                        <option key={dept} value={dept}>
+                          {DEPARTMENT_DISPLAY_NAMES[dept] || dept}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {formData.role === "LAB_MANAGER"
+                      ? "You will manage all labs in this department at your institute"
+                      : "Select the department of your assigned lab"}
+                  </p>
+                </div>
 
-            {/* Lab ID (for TRAINER only) */}
-            {formData.role === "TRAINER" && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Lab ID *
-                </label>
-                <input
-                  type="text"
-                  name="labId"
-                  value={formData.labId}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="e.g., ITI-PUSA-MECH-01"
-                  required
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Enter the unique Lab ID provided by your institute
-                </p>
-              </div>
+                {/* Lab ID */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Lab ID <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <Hash className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <input
+                      type="text"
+                      name="labId"
+                      value={formData.labId}
+                      onChange={handleChange}
+                      className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="e.g., ITI-PUSA-MECH-01"
+                      required
+                    />
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {formData.role === "LAB_MANAGER"
+                      ? "Enter your primary Lab ID."
+                      : "Enter the Lab ID you are assigned to."}
+                  </p>
+                </div>
+              </>
             )}
 
             {/* Password Fields */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Password *
+                  Password <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
                   <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -330,7 +367,7 @@ export default function SignupPage() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Confirm Password *
+                  Confirm Password <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="password"

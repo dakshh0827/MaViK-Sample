@@ -73,6 +73,9 @@ const can = {
   manageLabs: isPolicyMaker,
   viewLabs: isLabManagerOrAbove,
 
+  // Institute management - ONLY POLICY_MAKER
+  manageInstitutes: isPolicyMaker,
+
   // System configuration
   manageSystem: isPolicyMaker,
 };
@@ -81,7 +84,7 @@ const can = {
  * Creates a Prisma 'where' filter based on the user's role to restrict data access.
  */
 const filterDataByRole = (req) => {
-  const { role, institute, department, labId } = req.user;
+  const { role, instituteId, department, labId } = req.user;
 
   switch (role) {
     /**
@@ -95,12 +98,12 @@ const filterDataByRole = (req) => {
      * They manage multiple labs under their department
      */
     case USER_ROLE_ENUM.LAB_MANAGER:
-      if (!institute || !department) {
+      if (!instituteId || !department) {
         return { id: null }; // Deny access if not properly configured
       }
       return {
         lab: {
-          institute: institute,
+          instituteId: instituteId,
           department: department,
         },
       };
@@ -128,28 +131,28 @@ const filterDataByRole = (req) => {
  * Filter for Lab queries based on user role
  */
 const filterLabsByRole = (req) => {
-  const { role, institute, department } = req.user;
+  const { role, instituteId, department, labId } = req.user;
 
   switch (role) {
     case USER_ROLE_ENUM.POLICY_MAKER:
       return {}; // Can see all labs
 
     case USER_ROLE_ENUM.LAB_MANAGER:
-      if (!institute || !department) {
+      if (!instituteId || !department) {
         return { id: null };
       }
       return {
-        institute: institute,
+        instituteId: instituteId,
         department: department,
       };
 
     case USER_ROLE_ENUM.TRAINER:
       // Trainers should only see their own lab
-      if (!req.user.labId) {
+      if (!labId) {
         return { id: null };
       }
       return {
-        id: req.user.labId,
+        id: labId,
       };
 
     default:

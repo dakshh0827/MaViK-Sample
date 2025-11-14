@@ -1,7 +1,13 @@
+/*
+ * =====================================================
+ * 4. backend/routes/index.js (UPDATED)
+ * =====================================================
+ */
 import express from 'express';
 import authRoutes from './auth.routes.js';
 import userRoutes from './user.routes.js';
-import labRoutes from './lab.routes.js'; // --- FIX: This line was missing ---
+import labRoutes from './lab.routes.js';
+import instituteRoutes from './institute.routes.js'; // --- ADD THIS ---
 import equipmentRoutes from './equipment.routes.js';
 import monitoringRoutes from './monitoring.routes.js';
 import analyticsRoutes from './analytics.routes.js';
@@ -22,7 +28,8 @@ router.get('/', (req, res) => {
     endpoints: {
       auth: '/api/auth',
       users: '/api/users',
-      labs: '/api/labs', // --- FIX: Added to list ---
+      institutes: '/api/institutes', // --- ADD THIS ---
+      labs: '/api/labs',
       equipment: '/api/equipment',
       monitoring: '/api/monitoring',
       analytics: '/api/analytics',
@@ -38,7 +45,8 @@ router.get('/', (req, res) => {
 // Mount routes
 router.use('/auth', authRoutes);
 router.use('/users', userRoutes);
-router.use('/labs', labRoutes); // --- FIX: This line was missing ---
+router.use('/institutes', instituteRoutes); // --- ADD THIS ---
+router.use('/labs', labRoutes);
 router.use('/equipment', equipmentRoutes);
 router.use('/monitoring', monitoringRoutes);
 router.use('/analytics', analyticsRoutes);

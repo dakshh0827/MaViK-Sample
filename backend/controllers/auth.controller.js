@@ -22,7 +22,7 @@ const generateAccessToken = (user) => {
     userId: user.id || user.userId,
     email: user.email,
     role: user.role,
-    institute: user.institute,
+    instituteId: user.instituteId,
     department: user.department,
     labId: user.labId,
   };
@@ -49,7 +49,7 @@ class AuthController {
       lastName,
       role,
       phone,
-      institute,
+      instituteId,
       department,
       labId,
     } = req.body;
@@ -72,35 +72,31 @@ class AuthController {
       });
     }
 
-    // Lab ID translation for Trainers
+    // Lab ID translation for Trainers and Lab Managers
     let labInternalId = null;
-    if (role === 'TRAINER') {
+    if (role === 'TRAINER' || role === 'LAB_MANAGER') {
       if (!labId) {
         return res.status(400).json({
           success: false,
-          message: "labId is required for Trainers.",
+          message: "labId is required for this role.",
         });
       }
 
       const lab = await prisma.lab.findFirst({
         where: {
-          labId: {
-            equals: labId.trim(),
-            mode: "insensitive",
-          },
+          labId: { equals: labId.trim(), mode: "insensitive" },
+          instituteId: instituteId,
+          department: department,
         },
       });
 
       if (!lab) {
-        logger.error(`Lab not found with labId: "${labId}"`);
-        const allLabs = await prisma.lab.findMany({
-          select: { labId: true, name: true },
-        });
-        logger.debug("Available labs:", allLabs);
-
+        logger.error(
+          `Lab not found with matching labId: "${labId}", institute: "${instituteId}", department: "${department}"`
+        );
         return res.status(400).json({
           success: false,
-          message: `Invalid Lab ID provided: "${labId}". Please check the Lab ID and try again.`,
+          message: `Invalid Lab ID or it does not match the selected Institute/Department.`,
         });
       }
 
@@ -109,11 +105,11 @@ class AuthController {
     }
 
     // Validate role-specific requirements
-    if (role === 'LAB_MANAGER') {
-      if (!institute || !department) {
+    if (role === 'LAB_MANAGER' || role === 'TRAINER') {
+      if (!instituteId || !department) {
         return res.status(400).json({
           success: false,
-          message: "Institute and Department are required for Lab Managers.",
+          message: "Institute and Department are required for this role.",
         });
       }
       
@@ -138,13 +134,6 @@ class AuthController {
       }
     }
 
-    if (role === 'TRAINER' && !institute) {
-      return res.status(400).json({
-        success: false,
-        message: "Institute is required for Trainers.",
-      });
-    }
-
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // Build base user data with proper null handling
@@ -153,38 +142,19 @@ class AuthController {
       password: hashedPassword,
       firstName,
       lastName,
-      role: role || 'TRAINER', // Use string literal, not enum constant
+      role: role || 'TRAINER',
       phone: phone || null,
-      institute: (role === 'LAB_MANAGER' || role === 'TRAINER') ? institute : null,
-      department: role === 'LAB_MANAGER' ? department : null,
+      department: (role === 'LAB_MANAGER' || role === 'TRAINER') ? department : null,
+      instituteId: (role === 'LAB_MANAGER' || role === 'TRAINER') ? instituteId : null,
+      labId: labInternalId,
       emailVerified: false,
-      authProvider: 'CREDENTIAL', // Use string literal
-    };
-
-    // For create operation
-    const createData = {
-      ...baseUserData,
-      ...(labInternalId && {
-        lab: {
-          connect: { id: labInternalId },
-        },
-      }),
-    };
-
-    // For update operation (if user exists but not verified)
-    const updateData = {
-      ...baseUserData,
-      ...(labInternalId && {
-        lab: {
-          connect: { id: labInternalId },
-        },
-      }),
+      authProvider: 'CREDENTIAL',
     };
 
     const user = await prisma.user.upsert({
       where: { email },
-      update: updateData,
-      create: createData,
+      update: baseUserData,
+      create: baseUserData,
     });
 
     const otp = generateOtp();
@@ -259,10 +229,16 @@ class AuthController {
         firstName: true,
         lastName: true,
         role: true,
-        institute: true,
+        instituteId: true,
+        institute: {
+          select: {
+            instituteId: true,
+            name: true,
+          },
+        },
         department: true,
         labId: true,
-        lab: { select: { name: true } },
+        lab: { select: { labId: true, name: true } },
       },
     });
 
@@ -414,7 +390,7 @@ class AuthController {
       firstName: user.firstName,
       lastName: user.lastName,
       role: user.role,
-      institute: user.institute,
+      instituteId: user.instituteId,
       department: user.department,
       labId: user.labId,
     };
@@ -474,7 +450,7 @@ class AuthController {
         firstName: true,
         lastName: true,
         role: true,
-        institute: true,
+        instituteId: true,
         department: true,
         labId: true,
       },
@@ -537,39 +513,51 @@ class AuthController {
     logger.debug("Redirecting to GitHub for authentication...");
   };
 
-  getProfile = asyncHandler(async (req, res, next) => {
-    const user = await prisma.user.findUnique({
-      where: { id: req.user.id },
-      select: {
-        id: true,
-        email: true,
-        firstName: true,
-        lastName: true,
-        role: true,
-        phone: true,
-        institute: true,
-        department: true,
-        labId: true,
-        isActive: true,
-        emailVerified: true,
-        authProvider: true,
-        createdAt: true,
-        lab: { select: { name: true } },
+  
+getProfile = asyncHandler(async (req, res) => {
+  const user = await prisma.user.findUnique({
+    where: { id: req.user.userId },
+    select: {
+      id: true,
+      email: true,
+      firstName: true,
+      lastName: true,
+      role: true,
+      phone: true,
+      instituteId: true,
+      institute: {
+        select: {
+          instituteId: true,
+          name: true,
+        },
       },
-    });
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found.",
-      });
-    }
-
-    res.json({
-      success: true,
-      data: user,
-    });
+      department: true,
+      labId: true,
+      isActive: true,
+      emailVerified: true,
+      createdAt: true,
+      lab: {
+        select: {
+          labId: true,
+          name: true,
+        },
+      },
+      // REMOVED: authProvider - this field doesn't exist in schema
+    },
   });
+
+  if (!user) {
+    return res.status(404).json({
+      success: false,
+      message: "User not found.",
+    });
+  }
+
+  res.json({
+    success: true,
+    data: user,
+  });
+});
 
   updateProfile = asyncHandler(async (req, res, next) => {
     const { firstName, lastName, phone } = req.body;
@@ -588,7 +576,7 @@ class AuthController {
         lastName: true,
         role: true,
         phone: true,
-        institute: true,
+        instituteId: true,
         department: true,
         labId: true,
       },
@@ -673,7 +661,7 @@ class AuthController {
         id: true,
         email: true,
         role: true,
-        institute: true,
+        instituteId: true,
         department: true,
         labId: true,
         isActive: true,
@@ -690,7 +678,7 @@ class AuthController {
       userId: user.id,
       email: user.email,
       role: user.role,
-      institute: user.institute,
+      instituteId: user.instituteId,
       department: user.department,
       labId: user.labId,
     };

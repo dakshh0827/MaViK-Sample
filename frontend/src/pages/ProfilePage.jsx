@@ -1,7 +1,8 @@
-// =====================================================
-// ProfilePage.jsx (FIXED - Displays Correct User Info)
-// =====================================================
-
+/*
+ * =====================================================
+ * frontend/src/pages/ProfilePage.jsx (UPDATED)
+ * =====================================================
+ */
 import { useState } from "react";
 import { useAuthStore } from "../stores/authStore";
 import {
@@ -13,7 +14,21 @@ import {
   Check,
   AlertCircle,
   Briefcase,
+  Book,
 } from "lucide-react";
+
+// Department display names
+const DEPARTMENT_DISPLAY_NAMES = {
+  FITTER_MANUFACTURING: "Fitter/Manufacturing",
+  ELECTRICAL_ENGINEERING: "Electrical Engineering",
+  WELDING_FABRICATION: "Welding & Fabrication",
+  TOOL_DIE_MAKING: "Tool & Die Making",
+  ADDITIVE_MANUFACTURING: "Additive Manufacturing",
+  SOLAR_INSTALLER_PV: "Solar Installer (PV)",
+  MATERIAL_TESTING_QUALITY: "Material Testing/Quality",
+  ADVANCED_MANUFACTURING_CNC: "Advanced Manufacturing/CNC",
+  AUTOMOTIVE_MECHANIC: "Automotive/Mechanic",
+};
 
 export default function ProfilePage() {
   const { user, updateProfile, changePassword } = useAuthStore();
@@ -197,7 +212,7 @@ export default function ProfilePage() {
                 </p>
               </div>
             </div>
-            
+
             <div className="flex items-center gap-3">
               <Mail className="w-5 h-5 text-gray-400" />
               <div>
@@ -205,7 +220,7 @@ export default function ProfilePage() {
                 <p className="font-medium">{user?.email}</p>
               </div>
             </div>
-            
+
             <div className="flex items-center gap-3">
               <Phone className="w-5 h-5 text-gray-400" />
               <div>
@@ -213,7 +228,7 @@ export default function ProfilePage() {
                 <p className="font-medium">{user?.phone || "Not provided"}</p>
               </div>
             </div>
-            
+
             <div className="flex items-center gap-3">
               <Briefcase className="w-5 h-5 text-gray-400" />
               <div>
@@ -221,41 +236,48 @@ export default function ProfilePage() {
                 <p className="font-medium">{getRoleDisplay(user?.role)}</p>
               </div>
             </div>
-            
-            {/* Institute - shown for LAB_MANAGER and TRAINER */}
+
+            {/* UPDATED: Institute - shown for both LAB_MANAGER and TRAINER */}
             {(user?.role === "LAB_MANAGER" || user?.role === "TRAINER") && (
               <div className="flex items-center gap-3">
                 <Building className="w-5 h-5 text-gray-400" />
                 <div>
                   <p className="text-sm text-gray-600">Institute</p>
-                  <p className="font-medium">{user?.institute || "Not assigned"}</p>
-                </div>
-              </div>
-            )}
-            
-            {/* Department - shown for LAB_MANAGER only */}
-            {user?.role === "LAB_MANAGER" && user?.department && (
-              <div className="flex items-center gap-3">
-                <Building className="w-5 h-5 text-gray-400" />
-                <div>
-                  <p className="text-sm text-gray-600">Department</p>
                   <p className="font-medium">
-                    {user.department.replace(/_/g, " ")}
+                    {user?.institute?.name || "Not assigned"}
                   </p>
                 </div>
               </div>
             )}
-            
-            {/* Lab - shown for TRAINER only */}
-            {user?.role === "TRAINER" && user?.lab?.name && (
-              <div className="flex items-center gap-3">
-                <Building className="w-5 h-5 text-gray-400" />
-                <div>
-                  <p className="text-sm text-gray-600">Lab</p>
-                  <p className="font-medium">{user.lab.name}</p>
+
+            {/* UPDATED: Department - shown for both LAB_MANAGER and TRAINER */}
+            {(user?.role === "LAB_MANAGER" || user?.role === "TRAINER") &&
+              user?.department && (
+                <div className="flex items-center gap-3">
+                  <Book className="w-5 h-5 text-gray-400" />
+                  <div>
+                    <p className="text-sm text-gray-600">Department</p>
+                    <p className="font-medium">
+                      {DEPARTMENT_DISPLAY_NAMES[user.department] ||
+                        user.department}
+                    </p>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+
+            {/* UPDATED: Lab - shown for both LAB_MANAGER and TRAINER */}
+            {(user?.role === "LAB_MANAGER" || user?.role === "TRAINER") &&
+              user?.lab && (
+                <div className="flex items-center gap-3">
+                  <Building className="w-5 h-5 text-gray-400" />
+                  <div>
+                    <p className="text-sm text-gray-600">
+                      {user.role === "LAB_MANAGER" ? "Primary Lab" : "Lab"}
+                    </p>
+                    <p className="font-medium">{user.lab.name}</p>
+                  </div>
+                </div>
+              )}
           </div>
         )}
       </div>

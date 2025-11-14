@@ -1,8 +1,14 @@
+/*
+ * =====================================================
+ * 1. frontend/src/pages/dashboards/LabManagerDashboard.jsx (FIXED)
+ * =====================================================
+ */
 import { useEffect, useState } from "react";
 import { useDashboardStore } from "../../stores/dashboardStore";
 import { useEquipmentStore } from "../../stores/equipmentStore";
 import { useAlertStore } from "../../stores/alertStore";
 import { useAuthStore } from "../../stores/authStore";
+import { useLabStore } from "../../stores/labStore"; // Import lab store
 import StatCard from "../../components/common/StatCard";
 import EquipmentTable from "../../components/dashboard/EquipmentTable";
 import AlertsList from "../../components/dashboard/AlertsList";
@@ -17,8 +23,10 @@ import {
   Plus,
   Filter,
   Download,
+  BarChart2,
 } from "lucide-react";
 
+// Department display names
 const DEPARTMENT_DISPLAY_NAMES = {
   FITTER_MANUFACTURING: "Fitter/Manufacturing",
   ELECTRICAL_ENGINEERING: "Electrical Engineering",
@@ -33,25 +41,30 @@ const DEPARTMENT_DISPLAY_NAMES = {
 
 export default function LabManagerDashboard() {
   const { user } = useAuthStore();
+  const { overview, fetchOverview, isLoading: dashboardLoading } =
+    useDashboardStore();
   const {
-    overview,
-    fetchOverview,
-    isLoading: dashboardLoading,
-  } = useDashboardStore();
-  const { 
-    equipment, 
-    fetchEquipment, 
-    createEquipment, 
+    equipment,
+    fetchEquipment,
+    createEquipment,
     updateEquipment,
     deleteEquipment,
-    isLoading: equipmentLoading 
+    isLoading: equipmentLoading,
   } = useEquipmentStore();
   const { alerts, fetchAlerts, resolveAlert } = useAlertStore();
-  
-  const [selectedLab, setSelectedLab] = useState("all");
+  // Use Lab Store
+  const {
+    labs,
+    fetchLabs,
+    labSummary,
+    fetchLabSummary,
+    clearLabSummary,
+    isLoading: labLoading,
+  } = useLabStore();
+
+  const [selectedLabId, setSelectedLabId] = useState("all"); // Public Lab ID
   const [selectedStatus, setSelectedStatus] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
-  const [equipmentByLab, setEquipmentByLab] = useState({});
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEquipment, setEditingEquipment] = useState(null);
 
@@ -59,28 +72,31 @@ export default function LabManagerDashboard() {
     loadDashboardData();
   }, []);
 
-  useEffect(() => {
-    // Group equipment by lab
-    if (equipment.length > 0) {
-      const grouped = equipment.reduce((acc, eq) => {
-        const labName = eq.lab?.name || "Unknown Lab";
-        if (!acc[labName]) acc[labName] = [];
-        acc[labName].push(eq);
-        return acc;
-      }, {});
-      setEquipmentByLab(grouped);
-    }
-  }, [equipment]);
-
   const loadDashboardData = async () => {
     try {
       await Promise.all([
         fetchOverview(),
-        fetchEquipment(), // Backend auto-filters by institute & department
+        fetchEquipment(), // Fetches all equipment for this manager
         fetchAlerts({ isResolved: false }),
+        fetchLabs(), // Fetches all labs for this manager
       ]);
+      clearLabSummary(); // Clear summary on reload
     } catch (error) {
       console.error("Failed to load dashboard data:", error);
+    }
+  };
+
+  // Handler when a lab is clicked from the list
+  const handleSelectLab = (labId) => {
+    if (labId === selectedLabId) {
+      // Deselect
+      setSelectedLabId("all");
+      fetchEquipment(); // Fetch all equipment again
+      clearLabSummary();
+    } else {
+      setSelectedLabId(labId);
+      fetchEquipment({ labId: labId }); // Fetch equipment for this lab
+      fetchLabSummary(labId); // Fetch summary for this lab
     }
   };
 
@@ -88,7 +104,7 @@ export default function LabManagerDashboard() {
     try {
       await createEquipment(data);
       setIsModalOpen(false);
-      await loadDashboardData();
+      await loadDashboardData(); // Refresh all data
     } catch (error) {
       console.error("Failed to create equipment:", error);
       throw error;
@@ -100,7 +116,7 @@ export default function LabManagerDashboard() {
       await updateEquipment(id, data);
       setIsModalOpen(false);
       setEditingEquipment(null);
-      await loadDashboardData();
+      await loadDashboardData(); // Refresh all data
     } catch (error) {
       console.error("Failed to update equipment:", error);
       throw error;
@@ -111,10 +127,9 @@ export default function LabManagerDashboard() {
     if (!window.confirm("Are you sure you want to delete this equipment?")) {
       return;
     }
-    
     try {
       await deleteEquipment(id);
-      await loadDashboardData();
+      await loadDashboardData(); // Refresh all data
     } catch (error) {
       console.error("Failed to delete equipment:", error);
       alert("Failed to delete equipment. Please try again.");
@@ -131,16 +146,34 @@ export default function LabManagerDashboard() {
     setEditingEquipment(null);
   };
 
-  const handleExportData = () => {
-    // Export filtered equipment as CSV
-    const filteredData = getFilteredEquipment();
-    const csv = convertToCSV(filteredData);
-    downloadCSV(csv, `equipment-${new Date().toISOString().split('T')[0]}.csv`);
+  // Filter equipment based on local filters
+  const getFilteredEquipment = () => {
+    // Start with the equipment list (which is already filtered by lab if one is selected)
+    let filtered = equipment;
+
+    // Filter by status
+    if (selectedStatus !== "all") {
+      filtered = filtered.filter((eq) => eq.status?.status === selectedStatus);
+    }
+
+    // Filter by search query
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(
+        (eq) =>
+          eq.name.toLowerCase().includes(query) ||
+          eq.equipmentId.toLowerCase().includes(query) ||
+          eq.manufacturer.toLowerCase().includes(query) ||
+          eq.model.toLowerCase().includes(query)
+      );
+    }
+
+    return filtered;
   };
 
+  // This function is just for CSV export
   const convertToCSV = (data) => {
     if (!data.length) return "";
-    
     const headers = [
       "Equipment ID",
       "Name",
@@ -151,8 +184,7 @@ export default function LabManagerDashboard() {
       "Model",
       "Purchase Date",
     ];
-    
-    const rows = data.map(eq => [
+    const rows = data.map((eq) => [
       eq.equipmentId,
       eq.name,
       eq.department,
@@ -162,8 +194,7 @@ export default function LabManagerDashboard() {
       eq.model,
       new Date(eq.purchaseDate).toLocaleDateString(),
     ]);
-    
-    return [headers, ...rows].map(row => row.join(",")).join("\n");
+    return [headers, ...rows].map((row) => row.join(",")).join("\n");
   };
 
   const downloadCSV = (csv, filename) => {
@@ -176,31 +207,10 @@ export default function LabManagerDashboard() {
     window.URL.revokeObjectURL(url);
   };
 
-  const getFilteredEquipment = () => {
-    let filtered = equipment;
-
-    // Filter by lab
-    if (selectedLab !== "all") {
-      filtered = filtered.filter(eq => eq.lab?.name === selectedLab);
-    }
-
-    // Filter by status
-    if (selectedStatus !== "all") {
-      filtered = filtered.filter(eq => eq.status?.status === selectedStatus);
-    }
-
-    // Filter by search query
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(eq =>
-        eq.name.toLowerCase().includes(query) ||
-        eq.equipmentId.toLowerCase().includes(query) ||
-        eq.manufacturer.toLowerCase().includes(query) ||
-        eq.model.toLowerCase().includes(query)
-      );
-    }
-
-    return filtered;
+  const handleExportData = () => {
+    const filteredData = getFilteredEquipment();
+    const csv = convertToCSV(filteredData);
+    downloadCSV(csv, `equipment-${new Date().toISOString().split("T")[0]}.csv`);
   };
 
   if (dashboardLoading) {
@@ -216,25 +226,21 @@ export default function LabManagerDashboard() {
       icon: Activity,
       title: "Total Equipment",
       value: overview?.overview?.totalEquipment || 0,
-      color: "blue",
     },
     {
       icon: TrendingUp,
       title: "Active Equipment",
       value: overview?.overview?.activeEquipment || 0,
-      color: "green",
     },
     {
       icon: AlertTriangle,
       title: "Unresolved Alerts",
       value: overview?.overview?.unresolvedAlerts || 0,
-      color: "red",
     },
     {
       icon: Wrench,
       title: "Maintenance Due",
       value: overview?.overview?.maintenanceDue || 0,
-      color: "yellow",
     },
   ];
 
@@ -249,7 +255,8 @@ export default function LabManagerDashboard() {
             Lab Manager Dashboard
           </h1>
           <p className="text-gray-600 mt-1">
-            {user?.institute} | {DEPARTMENT_DISPLAY_NAMES[user?.department] || user?.department}
+            {user?.institute} |{" "}
+            {DEPARTMENT_DISPLAY_NAMES[user?.department] || user?.department}
           </p>
         </div>
         <button
@@ -274,39 +281,20 @@ export default function LabManagerDashboard() {
           <Filter className="w-5 h-5 text-gray-600" />
           <h3 className="font-semibold text-gray-900">Filters</h3>
         </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Search */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Search
+              Search Equipment
             </label>
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search equipment..."
+              placeholder="Search by name, ID, model..."
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
-          </div>
-
-          {/* Lab Filter */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Lab
-            </label>
-            <select
-              value={selectedLab}
-              onChange={(e) => setSelectedLab(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="all">All Labs</option>
-              {Object.keys(equipmentByLab).map((labName) => (
-                <option key={labName} value={labName}>
-                  {labName} ({equipmentByLab[labName].length})
-                </option>
-              ))}
-            </select>
           </div>
 
           {/* Status Filter */}
@@ -332,10 +320,9 @@ export default function LabManagerDashboard() {
           </div>
         </div>
 
-        {/* Results count and export */}
         <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-200">
           <p className="text-sm text-gray-600">
-            Showing {filteredEquipment.length} of {equipment.length} equipment
+            Showing {filteredEquipment.length} equipment
           </p>
           <button
             onClick={handleExportData}
@@ -349,16 +336,117 @@ export default function LabManagerDashboard() {
 
       {/* Main Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Lab List & Analytics */}
+        <div className="space-y-6">
+          <div className="bg-white rounded-lg shadow-sm border border-gray-100">
+            <div className="p-4 border-b border-gray-200">
+              <h3 className="font-semibold">My Labs</h3>
+            </div>
+            <div className="p-4 space-y-3 max-h-60 overflow-y-auto">
+              {labs.length === 0 ? (
+                <p className="text-sm text-gray-600 text-center py-4">
+                  No labs found for your department.
+                </p>
+              ) : (
+                labs.map((lab) => (
+                  <div
+                    key={lab.id}
+                    className={`p-3 rounded-lg border-2 cursor-pointer ${
+                      selectedLabId === lab.labId
+                        ? "border-blue-500 bg-blue-50"
+                        : "border-gray-100 bg-gray-50 hover:bg-gray-100"
+                    }`}
+                    onClick={() => handleSelectLab(lab.labId)}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Building className="w-4 h-4 text-gray-600" />
+                        <h4 className="font-medium text-gray-900 text-sm">
+                          {lab.name}
+                        </h4>
+                      </div>
+                      <span className="text-sm font-bold text-blue-600">
+                        {/* *** THIS IS THE FIX *** */}
+                        {lab._count?.equipments || 0} equip.
+                      </span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-6">
+            <h2 className="text-xl font-semibold mb-4">Lab Analytics</h2>
+            {labLoading ? (
+              <LoadingSpinner />
+            ) : labSummary ? (
+              <div className="space-y-3">
+                <h3 className="font-bold text-lg text-blue-900">
+                  {labSummary.lab.name}
+                </h3>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-medium text-gray-600">
+                    Total Equipment
+                  </span>
+                  <span className="font-bold text-lg">
+                    {labSummary.statistics.totalEquipment}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-medium text-gray-600">
+                    Avg. Health Score
+                  </span>
+                  <span className="font-bold text-lg text-green-600">
+                    {labSummary.statistics.avgHealthScore.toFixed(0)}%
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-medium text-gray-600">
+                    Total Uptime
+                  </span>
+                  <span className="font-bold text-lg">
+                    {labSummary.statistics.totalUptime.toFixed(1)} hrs
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-medium text-gray-600">
+                    Total Downtime
+                  </span>
+                  <span className="font-bold text-lg text-red-600">
+                    {labSummary.statistics.totalDowntime.toFixed(1)} hrs
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-medium text-gray-600">
+                    Equipment In Class
+                  </span>
+                  <span className="font-bold text-lg">
+                    {labSummary.statistics.inClassEquipment}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-10 text-gray-500">
+                <BarChart2 className="w-12 h-12 mx-auto text-gray-300 mb-2" />
+                <p>Select a lab to view its summary</p>
+              </div>
+            )}
+          </div>
+        </div>
+
         {/* Equipment Table */}
         <div className="lg:col-span-2">
           <div className="bg-white rounded-lg shadow-sm border border-gray-100">
             <div className="p-4 border-b border-gray-200">
-              <h2 className="text-xl font-semibold">Equipment Management</h2>
-              {selectedLab !== "all" && (
-                <p className="text-sm text-gray-600 mt-1">
-                  Filtered by: {selectedLab}
-                </p>
-              )}
+              <h2 className="text-xl font-semibold">
+                Equipment{" "}
+                {selectedLabId !== "all"
+                  ? `(Lab: ${
+                      labs.find((l) => l.labId === selectedLabId)?.name
+                    })`
+                  : "(All Labs)"}
+              </h2>
             </div>
             <div className="p-4">
               {equipmentLoading ? (
@@ -369,12 +457,14 @@ export default function LabManagerDashboard() {
                 <div className="text-center py-12">
                   <Activity className="w-12 h-12 text-gray-400 mx-auto mb-3" />
                   <p className="text-gray-600">No equipment found</p>
-                  <button
-                    onClick={() => setIsModalOpen(true)}
-                    className="mt-4 text-blue-600 hover:text-blue-700 font-medium"
-                  >
-                    Add your first equipment
-                  </button>
+                  {selectedLabId === "all" && (
+                    <button
+                      onClick={() => setIsModalOpen(true)}
+                      className="mt-4 text-blue-600 hover:text-blue-700 font-medium"
+                    >
+                      Add your first equipment
+                    </button>
+                  )}
                 </div>
               ) : (
                 <EquipmentTable
@@ -387,65 +477,12 @@ export default function LabManagerDashboard() {
             </div>
           </div>
         </div>
+      </div>
 
-        {/* Sidebar */}
-        <div className="space-y-6">
-          {/* Alerts */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-100">
-            <div className="p-4 border-b border-gray-200">
-              <h2 className="text-xl font-semibold">Recent Alerts</h2>
-            </div>
-            <div className="p-4">
-              {alerts.length === 0 ? (
-                <div className="text-center py-8">
-                  <AlertTriangle className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                  <p className="text-sm text-gray-600">No active alerts</p>
-                </div>
-              ) : (
-                <AlertsList
-                  alerts={alerts.slice(0, 5)}
-                  onResolve={resolveAlert}
-                />
-              )}
-            </div>
-          </div>
-
-          {/* Equipment by Lab Summary */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-100">
-            <div className="p-4 border-b border-gray-200">
-              <h3 className="font-semibold">Equipment by Lab</h3>
-            </div>
-            <div className="p-4">
-              {Object.keys(equipmentByLab).length === 0 ? (
-                <p className="text-sm text-gray-600 text-center py-4">
-                  No labs with equipment
-                </p>
-              ) : (
-                <div className="space-y-3">
-                  {Object.entries(equipmentByLab).map(([labName, items]) => (
-                    <div
-                      key={labName}
-                      className="p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
-                      onClick={() => setSelectedLab(labName)}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Building className="w-4 h-4 text-gray-600" />
-                          <h4 className="font-medium text-gray-900 text-sm">
-                            {labName}
-                          </h4>
-                        </div>
-                        <span className="text-lg font-bold text-blue-600">
-                          {items.length}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+      {/* Alerts List */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-6">
+        <h2 className="text-xl font-semibold mb-4">Recent Alerts</h2>
+        <AlertsList alerts={alerts.slice(0, 5)} onResolve={resolveAlert} />
       </div>
 
       {/* Equipment Form Modal */}
@@ -453,11 +490,10 @@ export default function LabManagerDashboard() {
         <EquipmentFormModal
           isOpen={isModalOpen}
           onClose={handleModalClose}
-          onSubmit={editingEquipment ? handleUpdateEquipment : handleCreateEquipment}
+          onSubmit={
+            editingEquipment ? handleUpdateEquipment : handleCreateEquipment
+          }
           equipment={editingEquipment}
-          userDepartment={user?.department}
-          userInstitute={user?.institute}
-          userRole={user?.role} // Pass user role
         />
       )}
     </div>

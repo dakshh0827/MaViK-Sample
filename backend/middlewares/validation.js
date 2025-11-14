@@ -46,22 +46,21 @@ export const registerValidation = [
     .optional()
     .isMobilePhone()
     .withMessage("Please provide a valid phone number"),
-  // LAB_MANAGER needs institute and department
-  body("institute")
-    .if(body("role").equals(USER_ROLE_ENUM.LAB_MANAGER))
-    .notEmpty()
-    .withMessage("Institute is required for Lab Managers"),
-  body("department")
-    .if(body("role").equals(USER_ROLE_ENUM.LAB_MANAGER))
-    .notEmpty()
-    .isIn(Object.values(DEPARTMENT_ENUM))
-    .withMessage("A valid department is required for Lab Managers"),
-  // TRAINER needs labId
-  body("labId")
-    .if(body("role").equals(USER_ROLE_ENUM.TRAINER))
+  body("instituteId")
+    .if(body("role").isIn([USER_ROLE_ENUM.LAB_MANAGER, USER_ROLE_ENUM.TRAINER]))
     .notEmpty()
     .isString()
-    .withMessage("A valid Lab ID (public string) is required for Trainers"),
+    .withMessage("Institute ID is required for this role"),
+  body("department")
+    .if(body("role").isIn([USER_ROLE_ENUM.LAB_MANAGER, USER_ROLE_ENUM.TRAINER]))
+    .notEmpty()
+    .isIn(Object.values(DEPARTMENT_ENUM))
+    .withMessage("A valid department is required for this role"),
+  body("labId")
+    .if(body("role").isIn([USER_ROLE_ENUM.LAB_MANAGER, USER_ROLE_ENUM.TRAINER]))
+    .notEmpty()
+    .isString()
+    .withMessage("A valid Lab ID (public string) is required for this role"),
   handleValidationErrors,
 ];
 
@@ -139,20 +138,21 @@ export const createUserValidation = [
     .optional()
     .isMobilePhone()
     .withMessage("Please provide a valid phone number"),
-  body("institute")
-    .if(body("role").equals(USER_ROLE_ENUM.LAB_MANAGER))
-    .notEmpty()
-    .withMessage("Institute is required for Lab Managers"),
-  body("department")
-    .if(body("role").equals(USER_ROLE_ENUM.LAB_MANAGER))
-    .notEmpty()
-    .isIn(Object.values(DEPARTMENT_ENUM))
-    .withMessage("A valid department is required for Lab Managers"),
-  body("labId")
-    .if(body("role").equals(USER_ROLE_ENUM.TRAINER))
+  body("instituteId")
+    .if(body("role").isIn([USER_ROLE_ENUM.LAB_MANAGER, USER_ROLE_ENUM.TRAINER]))
     .notEmpty()
     .isString()
-    .withMessage("A valid Lab ID (public string) is required for Trainers"),
+    .withMessage("Institute ID is required for this role"),
+  body("department")
+    .if(body("role").isIn([USER_ROLE_ENUM.LAB_MANAGER, USER_ROLE_ENUM.TRAINER]))
+    .notEmpty()
+    .isIn(Object.values(DEPARTMENT_ENUM))
+    .withMessage("A valid department is required for this role"),
+  body("labId")
+    .if(body("role").isIn([USER_ROLE_ENUM.LAB_MANAGER, USER_ROLE_ENUM.TRAINER]))
+    .notEmpty()
+    .isString()
+    .withMessage("A valid Lab ID (public string) is required for this role"),
   handleValidationErrors,
 ];
 
@@ -180,20 +180,21 @@ export const updateUserValidation = [
     .optional()
     .isMobilePhone()
     .withMessage("Please provide a valid phone number"),
-  body("institute")
-    .if(body("role").equals(USER_ROLE_ENUM.LAB_MANAGER))
-    .notEmpty()
-    .withMessage("Institute is required for Lab Managers"),
-  body("department")
-    .if(body("role").equals(USER_ROLE_ENUM.LAB_MANAGER))
-    .notEmpty()
-    .isIn(Object.values(DEPARTMENT_ENUM))
-    .withMessage("A valid department is required for Lab Managers"),
-  body("labId")
-    .if(body("role").equals(USER_ROLE_ENUM.TRAINER))
+  body("instituteId")
+    .if(body("role").isIn([USER_ROLE_ENUM.LAB_MANAGER, USER_ROLE_ENUM.TRAINER]))
     .notEmpty()
     .isString()
-    .withMessage("A valid Lab ID (public string) is required for Trainers"),
+    .withMessage("Institute ID is required for this role"),
+  body("department")
+    .if(body("role").isIn([USER_ROLE_ENUM.LAB_MANAGER, USER_ROLE_ENUM.TRAINER]))
+    .notEmpty()
+    .isIn(Object.values(DEPARTMENT_ENUM))
+    .withMessage("A valid department is required for this role"),
+  body("labId")
+    .if(body("role").isIn([USER_ROLE_ENUM.LAB_MANAGER, USER_ROLE_ENUM.TRAINER]))
+    .notEmpty()
+    .isString()
+    .withMessage("A valid Lab ID (public string) is required for this role"),
   body("isActive")
     .optional()
     .isBoolean()
@@ -318,10 +319,29 @@ export const chatbotValidation = [
 export const labValidation = [
   body("labId").notEmpty().isString().withMessage("Lab ID is required"),
   body("name").notEmpty().withMessage("Lab name is required"),
-  body("institute").notEmpty().withMessage("Institute name is required"),
+  body("instituteId")
+    .notEmpty()
+    .isString()
+    .withMessage("Institute ID is required"),
   body("department")
     .notEmpty()
     .isIn(Object.values(DEPARTMENT_ENUM))
     .withMessage("Valid department is required"),
+  handleValidationErrors,
+];
+
+// --- Institute Validation (NEW) ---
+
+export const instituteValidation = [
+  body("instituteId")
+    .notEmpty()
+    .isString()
+    .withMessage("Institute ID is required"),
+  body("name")
+    .notEmpty()
+    .isString()
+    .trim()
+    .isLength({ min: 2 })
+    .withMessage("Institute name must be at least 2 characters long"),
   handleValidationErrors,
 ];

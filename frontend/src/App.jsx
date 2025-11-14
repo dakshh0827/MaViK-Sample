@@ -1,3 +1,8 @@
+/*
+ * =====================================================
+ * 1. frontend/src/App.jsx
+ * =====================================================
+ */
 import React, { useEffect } from "react";
 import {
   BrowserRouter as Router,
@@ -13,7 +18,8 @@ import LoginPage from "./pages/auth/LoginPage";
 import SignupPage from "./pages/auth/SignupPage";
 import VerifyEmailPage from "./pages/auth/VerifyEmailPage";
 import TrainerDashboard from "./pages/dashboards/TrainerDashboard";
-import LabTechnicianDashboard from "./pages/dashboards/LabTechnicianDashboard";
+// *** UPDATED: Renamed LabTechnicianDashboard to LabManagerDashboard ***
+import LabManagerDashboard from "./pages/dashboards/LabManagerDashboard";
 import PolicyMakerDashboard from "./pages/dashboards/PolicyMakerDashboard";
 import ProfilePage from "./pages/ProfilePage";
 import ChatbotPage from "./pages/ChatbotPage";
@@ -82,8 +88,9 @@ function DashboardRouter() {
   switch (user.role) {
     case "TRAINER":
       return <TrainerDashboard />;
+    // *** UPDATED: Role name and component ***
     case "LAB_MANAGER":
-      return <LabTechnicianDashboard />;
+      return <LabManagerDashboard />;
     case "POLICY_MAKER":
       return <PolicyMakerDashboard />;
     default:

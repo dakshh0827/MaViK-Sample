@@ -63,6 +63,7 @@ class EquipmentController {
     // Build where clause
     const where = {
       ...roleFilter,
+      labId: { not: null },
       ...(department && { department }),
       ...(search && {
         OR: [

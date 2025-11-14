@@ -1,256 +1,318 @@
-// =====================================================
-// 25. src/pages/SLDPage.jsx (Single Line Diagram)
-// =====================================================
-
-import { useEffect, useState } from "react";
-import { useEquipmentStore } from "../stores/equipmentStore";
+/*
+ * =====================================================
+ * frontend/src/pages/SLDPage.jsx (NEW)
+ * =====================================================
+ */
+import { useEffect, useState, useMemo } from "react";
 import { useAuthStore } from "../stores/authStore";
+import { useLabStore } from "../stores/labStore";
+import { useEquipmentStore } from "../stores/equipmentStore";
+import { useInstituteStore } from "../stores/instituteStore";
 import LoadingSpinner from "../components/common/LoadingSpinner";
-import {
-  Activity,
-  AlertTriangle,
-  CheckCircle,
-  XCircle,
-  Zap,
-} from "lucide-react";
+import EquipmentNode from "../components/sld/EquipmentNode";
+import { Filter, AlertCircle } from "lucide-react";
+
+const DEPARTMENT_DISPLAY_NAMES = {
+  FITTER_MANUFACTURING: "Fitter/Manufacturing",
+  ELECTRICAL_ENGINEERING: "Electrical Engineering",
+  WELDING_FABRICATION: "Welding & Fabrication",
+  TOOL_DIE_MAKING: "Tool & Die Making",
+  ADDITIVE_MANUFACTURING: "Additive Manufacturing",
+  SOLAR_INSTALLER_PV: "Solar Installer (PV)",
+  MATERIAL_TESTING_QUALITY: "Material Testing/Quality",
+  ADVANCED_MANUFACTURING_CNC: "Advanced Manufacturing/CNC",
+  AUTOMOTIVE_MECHANIC: "Automotive/Mechanic",
+};
+
+const STATUS_COLORS = {
+  OPERATIONAL: "bg-green-500",
+  IN_USE: "bg-blue-500",
+  IN_CLASS: "bg-purple-500",
+  IDLE: "bg-gray-400",
+  MAINTENANCE: "bg-yellow-500",
+  FAULTY: "bg-red-500",
+  OFFLINE: "bg-gray-600",
+  WARNING: "bg-orange-500",
+};
 
 export default function SLDPage() {
   const { user } = useAuthStore();
-  const { equipment, fetchEquipment, isLoading } = useEquipmentStore();
+  const { labs, fetchLabs, isLoading: labsLoading } = useLabStore();
+  const { equipment, fetchEquipment, isLoading: equipmentLoading } = useEquipmentStore();
+  const { institutes, fetchInstitutes, isLoading: institutesLoading } = useInstituteStore();
+
+  // Filter states
+  const [selectedInstitute, setSelectedInstitute] = useState("all");
   const [selectedDepartment, setSelectedDepartment] = useState("all");
-  const [selectedStatus, setSelectedStatus] = useState("all");
+  const [selectedLab, setSelectedLab] = useState("all");
+  const [gridColumns, setGridColumns] = useState(3); // Number of columns in grid
 
   useEffect(() => {
-    const filters = user?.role === "TRAINER" ? { labId: user.labId } : {};
-    fetchEquipment(filters);
+    const loadData = async () => {
+      try {
+        // Policy Maker sees all institutes, Lab Manager sees only their institute
+        if (user.role === "POLICY_MAKER") {
+          await fetchInstitutes();
+        }
+        await fetchLabs();
+      } catch (error) {
+        console.error("Failed to load data:", error);
+      }
+    };
+    loadData();
   }, []);
 
-  const getStatusIcon = (status) => {
-    switch (status) {
-      case "OPERATIONAL":
-      case "IN_USE":
-        return <CheckCircle className="w-5 h-5 text-green-600" />;
-      case "MAINTENANCE":
-        return <Zap className="w-5 h-5 text-yellow-600" />;
-      case "FAULTY":
-        return <AlertTriangle className="w-5 h-5 text-red-600" />;
-      case "OFFLINE":
-        return <XCircle className="w-5 h-5 text-gray-400" />;
-      default:
-        return <Activity className="w-5 h-5 text-gray-400" />;
+  // Filter logic based on user role
+  const availableInstitutes = useMemo(() => {
+    if (user.role === "POLICY_MAKER") {
+      return institutes;
+    } else if (user.role === "LAB_MANAGER") {
+      // Lab Manager only sees their institute
+      return institutes.filter(inst => inst.instituteId === user.instituteId);
     }
+    return [];
+  }, [institutes, user]);
+
+  const availableDepartments = useMemo(() => {
+    if (user.role === "LAB_MANAGER") {
+      // Lab Manager only sees their department
+      return [user.department];
+    }
+    
+    // Policy Maker sees all departments
+    let filteredLabs = labs;
+    if (selectedInstitute !== "all") {
+      filteredLabs = labs.filter(lab => lab.instituteId === selectedInstitute);
+    }
+    return [...new Set(filteredLabs.map(lab => lab.department))].sort();
+  }, [labs, selectedInstitute, user]);
+
+  const availableLabs = useMemo(() => {
+    let filteredLabs = labs;
+
+    if (user.role === "LAB_MANAGER") {
+      // Lab Manager sees only labs in their department and institute
+      filteredLabs = labs.filter(
+        lab => lab.instituteId === user.instituteId && lab.department === user.department
+      );
+    } else {
+      // Policy Maker with filters
+      if (selectedInstitute !== "all") {
+        filteredLabs = filteredLabs.filter(lab => lab.instituteId === selectedInstitute);
+      }
+      if (selectedDepartment !== "all") {
+        filteredLabs = filteredLabs.filter(lab => lab.department === selectedDepartment);
+      }
+    }
+
+    return filteredLabs;
+  }, [labs, selectedInstitute, selectedDepartment, user]);
+
+  const selectedLabData = useMemo(() => {
+    if (selectedLab === "all") return null;
+    return availableLabs.find(lab => lab.labId === selectedLab);
+  }, [selectedLab, availableLabs]);
+
+  // Fetch equipment when lab changes
+  useEffect(() => {
+    if (selectedLab !== "all") {
+      fetchEquipment({ labId: selectedLab });
+    }
+  }, [selectedLab]);
+
+  // Group equipment into rows for grid layout
+  const equipmentGrid = useMemo(() => {
+    if (!equipment.length) return [];
+    
+    const rows = [];
+    for (let i = 0; i < equipment.length; i += gridColumns) {
+      rows.push(equipment.slice(i, i + gridColumns));
+    }
+    return rows;
+  }, [equipment, gridColumns]);
+
+  const handleInstituteChange = (e) => {
+    setSelectedInstitute(e.target.value);
+    setSelectedDepartment("all");
+    setSelectedLab("all");
   };
 
-  const getStatusColor = (status) => {
-    switch (status) {
-      case "OPERATIONAL":
-      case "IN_USE":
-        return "border-green-500 bg-green-50";
-      case "MAINTENANCE":
-        return "border-yellow-500 bg-yellow-50";
-      case "FAULTY":
-        return "border-red-500 bg-red-50";
-      case "OFFLINE":
-        return "border-gray-300 bg-gray-50";
-      default:
-        return "border-gray-300 bg-white";
-    }
+  const handleDepartmentChange = (e) => {
+    setSelectedDepartment(e.target.value);
+    setSelectedLab("all");
   };
 
-  // Filter equipment
-  const filteredEquipment = equipment.filter((eq) => {
-    if (selectedDepartment !== "all" && eq.department !== selectedDepartment)
-      return false;
-    if (selectedStatus !== "all" && eq.status?.status !== selectedStatus)
-      return false;
-    return true;
-  });
+  const handleLabChange = (e) => {
+    setSelectedLab(e.target.value);
+  };
 
-  // Get unique departments
-  const departments = [...new Set(equipment.map((eq) => eq.department))];
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-96">
-        <LoadingSpinner size="lg" />
-      </div>
-    );
-  }
+  const isLoading = labsLoading || equipmentLoading || institutesLoading;
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-gray-900">
-          Single Line Diagram (SLD) View
+          Single Line Diagram (SLD)
         </h1>
         <p className="text-gray-600 mt-1">
-          Visual representation of equipment in linear flowchart format
+          Visual representation of equipment layout and status in labs
         </p>
       </div>
 
       {/* Filters */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Filter by Department
-            </label>
+      <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-100">
+        <div className="flex items-center gap-2 mb-4">
+          <Filter className="w-5 h-5 text-gray-600" />
+          <h3 className="font-semibold text-gray-900">Select Lab</h3>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          {/* Institute Filter (Only for Policy Maker) */}
+          {user.role === "POLICY_MAKER" && (
             <select
-              value={selectedDepartment}
-              onChange={(e) => setSelectedDepartment(e.target.value)}
+              value={selectedInstitute}
+              onChange={handleInstituteChange}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              disabled={isLoading}
             >
-              <option value="all">All Departments</option>
-              {departments.map((dept) => (
-                <option key={dept} value={dept}>
-                  {dept}
+              <option value="all">All Institutes</option>
+              {availableInstitutes.map((inst) => (
+                <option key={inst.id} value={inst.instituteId}>
+                  {inst.name}
                 </option>
               ))}
             </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Filter by Status
-            </label>
+          )}
+
+          {/* Department Filter (Only for Policy Maker) */}
+          {user.role === "POLICY_MAKER" && (
             <select
-              value={selectedStatus}
-              onChange={(e) => setSelectedStatus(e.target.value)}
+              value={selectedDepartment}
+              onChange={handleDepartmentChange}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              disabled={isLoading || availableDepartments.length === 0}
             >
-              <option value="all">All Statuses</option>
-              <option value="OPERATIONAL">Operational</option>
-              <option value="IN_USE">In Use</option>
-              <option value="MAINTENANCE">Maintenance</option>
-              <option value="FAULTY">Faulty</option>
-              <option value="OFFLINE">Offline</option>
+              <option value="all">All Departments</option>
+              {availableDepartments.map((dept) => (
+                <option key={dept} value={dept}>
+                  {DEPARTMENT_DISPLAY_NAMES[dept] || dept}
+                </option>
+              ))}
             </select>
-          </div>
+          )}
+
+          {/* Lab Filter */}
+          <select
+            value={selectedLab}
+            onChange={handleLabChange}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            disabled={isLoading || availableLabs.length === 0}
+          >
+            <option value="all">Select a Lab</option>
+            {availableLabs.map((lab) => (
+              <option key={lab.labId} value={lab.labId}>
+                {lab.name} ({lab.labId})
+              </option>
+            ))}
+          </select>
+
+          {/* Grid Columns Control */}
+          <select
+            value={gridColumns}
+            onChange={(e) => setGridColumns(Number(e.target.value))}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          >
+            <option value={2}>2 Columns</option>
+            <option value={3}>3 Columns</option>
+            <option value={4}>4 Columns</option>
+            <option value={5}>5 Columns</option>
+          </select>
         </div>
       </div>
 
-      {/* Legend */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
-        <h3 className="font-medium mb-3">Legend</h3>
+      {/* Status Legend */}
+      <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-100">
+        <h3 className="font-semibold text-gray-900 mb-3">Status Legend</h3>
         <div className="flex flex-wrap gap-4">
-          <div className="flex items-center gap-2">
-            <CheckCircle className="w-5 h-5 text-green-600" />
-            <span className="text-sm">Operational / In Use</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Zap className="w-5 h-5 text-yellow-600" />
-            <span className="text-sm">Maintenance</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="w-5 h-5 text-red-600" />
-            <span className="text-sm">Faulty</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <XCircle className="w-5 h-5 text-gray-400" />
-            <span className="text-sm">Offline</span>
-          </div>
+          {Object.entries(STATUS_COLORS).map(([status, colorClass]) => (
+            <div key={status} className="flex items-center gap-2">
+              <div className={`w-4 h-4 rounded ${colorClass}`}></div>
+              <span className="text-sm text-gray-700">
+                {status.replace(/_/g, " ")}
+              </span>
+            </div>
+          ))}
         </div>
       </div>
 
-      {/* SLD Flowchart */}
+      {/* SLD Diagram */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-6">
-        {filteredEquipment.length === 0 ? (
-          <div className="text-center py-12 text-gray-500">
-            No equipment found matching the selected filters
+        {isLoading ? (
+          <div className="flex justify-center items-center h-96">
+            <LoadingSpinner size="lg" />
+          </div>
+        ) : selectedLab === "all" ? (
+          <div className="flex flex-col items-center justify-center h-96 text-gray-500">
+            <AlertCircle className="w-16 h-16 text-gray-300 mb-4" />
+            <p className="text-lg">Please select a lab to view equipment layout</p>
+          </div>
+        ) : equipment.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-96 text-gray-500">
+            <AlertCircle className="w-16 h-16 text-gray-300 mb-4" />
+            <p className="text-lg">No equipment found in this lab</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <div className="flex items-center gap-4 min-w-max pb-4">
-              {filteredEquipment.map((eq, index) => (
-                <div key={eq.id} className="flex items-center">
-                  {/* Equipment Card */}
-                  <div
-                    className={`border-2 rounded-lg p-4 w-64 ${getStatusColor(
-                      eq.status?.status
-                    )}`}
-                  >
-                    <div className="flex items-start justify-between mb-2">
-                      {getStatusIcon(eq.status?.status)}
-                      <span className="text-xs font-medium px-2 py-1 bg-white rounded">
-                        {eq.status?.status || "OFFLINE"}
-                      </span>
-                    </div>
-                    <h3 className="font-semibold text-sm mb-1">
-                      {eq.equipmentId}
-                    </h3>
-                    <p className="text-sm text-gray-700 mb-2">{eq.name}</p>
-                    <div className="text-xs text-gray-600 space-y-1">
-                      <p>Dept: {eq.department}</p>
-                      <p>Lab: {eq.lab?.name}</p>
-                      {eq.status?.healthScore !== undefined && (
-                        <p>
-                          Health:{" "}
-                          <span
-                            className={
-                              eq.status.healthScore >= 80
-                                ? "text-green-600 font-medium"
-                                : eq.status.healthScore >= 60
-                                ? "text-yellow-600 font-medium"
-                                : "text-red-600 font-medium"
-                            }
-                          >
-                            {eq.status.healthScore}%
-                          </span>
-                        </p>
-                      )}
-                    </div>
+          <div className="space-y-8">
+            {/* Lab Header */}
+            <div className="text-center border-b-4 border-blue-600 pb-4">
+              <h2 className="text-3xl font-bold text-blue-900">
+                {selectedLabData?.name || "Lab"}
+              </h2>
+              <p className="text-gray-600 mt-2">
+                {selectedLabData?.institute?.name || ""} | {" "}
+                {DEPARTMENT_DISPLAY_NAMES[selectedLabData?.department] || ""}
+              </p>
+              <p className="text-sm text-gray-500 mt-1">
+                Total Equipment: {equipment.length}
+              </p>
+            </div>
+
+            {/* Vertical Line from Header */}
+            <div className="flex justify-center">
+              <div className="w-1 h-16 bg-gray-400"></div>
+            </div>
+
+            {/* Equipment Grid */}
+            <div className="space-y-12">
+              {equipmentGrid.map((row, rowIndex) => (
+                <div key={rowIndex}>
+                  {/* Horizontal Line */}
+                  <div className="flex justify-center mb-6">
+                    <div className="w-full h-1 bg-gray-400"></div>
                   </div>
 
-                  {/* Connector Arrow */}
-                  {index < filteredEquipment.length - 1 && (
-                    <div className="flex items-center px-2">
-                      <div className="w-8 h-0.5 bg-gray-300"></div>
-                      <div className="w-0 h-0 border-t-4 border-b-4 border-l-4 border-transparent border-l-gray-300"></div>
-                    </div>
-                  )}
+                  {/* Equipment Row */}
+                  <div 
+                    className="grid gap-8"
+                    style={{ 
+                      gridTemplateColumns: `repeat(${gridColumns}, minmax(0, 1fr))` 
+                    }}
+                  >
+                    {row.map((eq) => (
+                      <div key={eq.id} className="flex flex-col items-center">
+                        {/* Vertical Line to Equipment */}
+                        <div className="w-1 h-12 bg-gray-400 mb-4"></div>
+                        
+                        {/* Equipment Node */}
+                        <EquipmentNode equipment={eq} />
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>
           </div>
         )}
-      </div>
-
-      {/* Summary Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4 text-center">
-          <p className="text-sm text-gray-600 mb-1">Total Equipment</p>
-          <p className="text-2xl font-bold text-gray-900">
-            {filteredEquipment.length}
-          </p>
-        </div>
-        <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4 text-center">
-          <p className="text-sm text-gray-600 mb-1">Operational</p>
-          <p className="text-2xl font-bold text-green-600">
-            {
-              filteredEquipment.filter((eq) =>
-                ["OPERATIONAL", "IN_USE"].includes(eq.status?.status)
-              ).length
-            }
-          </p>
-        </div>
-        <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4 text-center">
-          <p className="text-sm text-gray-600 mb-1">Maintenance</p>
-          <p className="text-2xl font-bold text-yellow-600">
-            {
-              filteredEquipment.filter(
-                (eq) => eq.status?.status === "MAINTENANCE"
-              ).length
-            }
-          </p>
-        </div>
-        <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4 text-center">
-          <p className="text-sm text-gray-600 mb-1">Faulty</p>
-          <p className="text-2xl font-bold text-red-600">
-            {
-              filteredEquipment.filter((eq) => eq.status?.status === "FAULTY")
-                .length
-            }
-          </p>
-        </div>
       </div>
     </div>
   );

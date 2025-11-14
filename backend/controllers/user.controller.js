@@ -9,12 +9,12 @@ const asyncHandler = (fn) => (req, res, next) => {
 
 class UserController {
   getAllUsers = asyncHandler(async (req, res) => {
-    const { page = 1, limit = 20, role, institute, search } = req.query;
+    const { page = 1, limit = 20, role, instituteId, search } = req.query;
     const skip = (page - 1) * limit;
 
     const where = {
       ...(role && { role }),
-      ...(institute && { institute }),
+      ...(instituteId && { instituteId }),
       ...(search && {
         OR: [
           { email: { contains: search, mode: "insensitive" } },
@@ -33,10 +33,16 @@ class UserController {
           firstName: true,
           lastName: true,
           role: true,
-          institute: true,
+          instituteId: true,
+          institute: {
+            select: {
+              instituteId: true,
+              name: true,
+            },
+          },
           department: true,
           labId: true,
-          lab: { select: { name: true } },
+          lab: { select: { labId: true, name: true } },
           isActive: true,
           createdAt: true,
         },
@@ -60,20 +66,14 @@ class UserController {
   });
 
   getUsersByInstitute = asyncHandler(async (req, res) => {
-    const { institute } = req.params;
+    const { instituteId } = req.params;
     const { page = 1, limit = 50, role } = req.query;
     const skip = (page - 1) * limit;
 
     const where = {
-      institute: institute,
+      instituteId: instituteId,
       ...(role && { role }),
     };
-
-    // If filtering for trainers, look by lab institute
-    if (role === USER_ROLE_ENUM.TRAINER) {
-      delete where.institute;
-      where.lab = { institute: institute };
-    }
 
     const [users, total] = await Promise.all([
       prisma.user.findMany({
@@ -88,7 +88,7 @@ class UserController {
           department: true,
           isActive: true,
           createdAt: true,
-          lab: { select: { id: true, name: true } },
+          lab: { select: { id: true, labId: true, name: true } },
         },
         skip: parseInt(skip),
         take: parseInt(limit),
@@ -119,10 +119,16 @@ class UserController {
         lastName: true,
         role: true,
         phone: true,
-        institute: true,
+        instituteId: true,
+        institute: {
+          select: {
+            instituteId: true,
+            name: true,
+          },
+        },
         department: true,
         labId: true,
-        lab: { select: { name: true } },
+        lab: { select: { labId: true, name: true } },
         isActive: true,
         createdAt: true,
       },
@@ -144,7 +150,7 @@ class UserController {
       lastName,
       role,
       phone,
-      institute,
+      instituteId,
       department,
       labId,
     } = req.body;
@@ -159,17 +165,24 @@ class UserController {
 
     // Lab ID translation
     let labInternalId = null;
-    if (role === USER_ROLE_ENUM.TRAINER) {
+    if (role === USER_ROLE_ENUM.TRAINER || role === USER_ROLE_ENUM.LAB_MANAGER) {
       if (!labId) {
         return res
           .status(400)
-          .json({ success: false, message: "labId is required for Trainers." });
+          .json({ success: false, message: "labId is required for this role." });
       }
       const lab = await prisma.lab.findUnique({ where: { labId: labId } });
       if (!lab) {
         return res
           .status(400)
           .json({ success: false, message: "Invalid Lab ID provided." });
+      }
+      
+      // Validation: Check if lab matches institute and department
+      if (lab.instituteId !== instituteId || lab.department !== department) {
+         return res
+          .status(400)
+          .json({ success: false, message: "Lab ID does not match Institute/Department." });
       }
       labInternalId = lab.id;
     }
@@ -184,8 +197,8 @@ class UserController {
         lastName,
         role,
         phone,
-        institute: role === USER_ROLE_ENUM.LAB_MANAGER ? institute : null,
-        department: role === USER_ROLE_ENUM.LAB_MANAGER ? department : null,
+        department: (role === USER_ROLE_ENUM.LAB_MANAGER || role === USER_ROLE_ENUM.TRAINER) ? department : null,
+        instituteId: (role === USER_ROLE_ENUM.LAB_MANAGER || role === USER_ROLE_ENUM.TRAINER) ? instituteId : null,
         labId: labInternalId,
         emailVerified: true,
         authProvider: AUTH_PROVIDER_ENUM.CREDENTIAL,
@@ -196,7 +209,13 @@ class UserController {
         firstName: true,
         lastName: true,
         role: true,
-        institute: true,
+        instituteId: true,
+        institute: {
+          select: {
+            instituteId: true,
+            name: true,
+          },
+        },
         department: true,
         labId: true,
         createdAt: true,
@@ -218,7 +237,7 @@ class UserController {
       lastName,
       role,
       phone,
-      institute,
+      instituteId,
       department,
       labId,
       isActive,
@@ -226,14 +245,22 @@ class UserController {
 
     // Lab ID translation
     let labInternalId = undefined;
-    if (role === USER_ROLE_ENUM.TRAINER && labId) {
-      const lab = await prisma.lab.findUnique({ where: { labId: labId } });
-      if (!lab) {
-        return res
-          .status(400)
-          .json({ success: false, message: "Invalid Lab ID provided." });
+    if (role && (role === USER_ROLE_ENUM.TRAINER || role === USER_ROLE_ENUM.LAB_MANAGER)) {
+      if (labId) {
+        const lab = await prisma.lab.findUnique({ where: { labId: labId } });
+        if (!lab) {
+          return res
+            .status(400)
+            .json({ success: false, message: "Invalid Lab ID provided." });
+        }
+        // Validation
+        if (lab.instituteId !== instituteId || lab.department !== department) {
+           return res
+            .status(400)
+            .json({ success: false, message: "Lab ID does not match Institute/Department." });
+        }
+        labInternalId = lab.id;
       }
-      labInternalId = lab.id;
     }
 
     const dataToUpdate = {
@@ -242,18 +269,13 @@ class UserController {
       lastName,
       role,
       phone,
-      institute: role === USER_ROLE_ENUM.LAB_MANAGER ? institute : null,
-      department: role === USER_ROLE_ENUM.LAB_MANAGER ? department : null,
-      labId: role === USER_ROLE_ENUM.TRAINER ? labInternalId : null,
+      department: (role === USER_ROLE_ENUM.LAB_MANAGER || role === USER_ROLE_ENUM.TRAINER) ? department : null,
+      instituteId: (role === USER_ROLE_ENUM.LAB_MANAGER || role === USER_ROLE_ENUM.TRAINER) ? instituteId : null,
+      labId: labInternalId !== undefined ? labInternalId : undefined,
       isActive,
     };
 
-    if (!role) {
-      delete dataToUpdate.institute;
-      delete dataToUpdate.department;
-      delete dataToUpdate.labId;
-    }
-
+    // Remove undefined values
     Object.keys(dataToUpdate).forEach(
       (key) => dataToUpdate[key] === undefined && delete dataToUpdate[key]
     );
@@ -268,7 +290,13 @@ class UserController {
           firstName: true,
           lastName: true,
           role: true,
-          institute: true,
+          instituteId: true,
+          institute: {
+            select: {
+              instituteId: true,
+              name: true,
+            },
+          },
           department: true,
           labId: true,
           isActive: true,
