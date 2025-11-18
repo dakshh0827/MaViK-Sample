@@ -1,6 +1,4 @@
-// =====================================================
-// src/stores/dashboardStore.js (FIXED)
-// =====================================================
+// src/stores/dashboardStore.js (UPDATED)
 import { create } from "zustand";
 import api from "../lib/axios";
 
@@ -8,6 +6,7 @@ export const useDashboardStore = create((set) => ({
   overview: null,
   realtimeStatus: [],
   sensorData: {},
+  labAnalytics: null,
   isLoading: false,
   error: null,
 
@@ -69,6 +68,33 @@ export const useDashboardStore = create((set) => ({
     }
   },
 
+  // NEW: Fetch comprehensive lab analytics
+  fetchLabAnalytics: async (labId) => {
+    set({ isLoading: true, error: null });
+    try {
+      console.log(`📊 Fetching lab analytics for ${labId}...`);
+      const response = await api.get(`/monitoring/lab-analytics/${labId}`);
+      console.log('✅ Lab analytics fetched:', response.data);
+      
+      set({ 
+        labAnalytics: response.data.data,
+        isLoading: false,
+        error: null 
+      });
+      return response.data;
+    } catch (error) {
+      console.error('❌ Error fetching lab analytics:', error);
+      set({ 
+        isLoading: false, 
+        error: error.response?.data?.message || error.message || 'Failed to fetch lab analytics'
+      });
+      throw error;
+    }
+  },
+
+  // Clear lab analytics
+  clearLabAnalytics: () => set({ labAnalytics: null }),
+
   // Clear error
   clearError: () => set({ error: null }),
 
@@ -77,6 +103,7 @@ export const useDashboardStore = create((set) => ({
     overview: null,
     realtimeStatus: [],
     sensorData: {},
+    labAnalytics: null,
     isLoading: false,
     error: null,
   }),

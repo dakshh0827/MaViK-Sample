@@ -1,8 +1,3 @@
-/*
- * =====================================================
- * frontend/src/pages/dashboards/PolicyMakerDashboard.jsx (UPDATED)
- * =====================================================
- */
 import { useEffect, useState, useMemo } from "react";
 import { useDashboardStore } from "../../stores/dashboardStore";
 import { useAlertStore } from "../../stores/alertStore";
@@ -16,6 +11,28 @@ import LabManagerForm from "../../components/admin/labManagerForm";
 import InstituteManagerForm from "../../components/admin/InstituteManagerForm";
 import api from "../../lib/axios";
 import {
+  LineChart,
+  Line,
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  RadarChart,
+  PolarGrid,
+  PolarAngleAxis,
+  PolarRadiusAxis,
+  Radar,
+  Area,
+  AreaChart,
+} from "recharts";
+import {
   Activity,
   Building,
   AlertTriangle,
@@ -26,12 +43,20 @@ import {
   Plus,
   Edit,
   Trash2,
-  BarChart2,
   Building2,
   AlertCircle,
+  TrendingDown,
+  Clock,
+  CheckCircle,
+  Zap,
+  Gauge,
+  ThermometerSun,
+  Wind,
+  BarChart3,
+  PieChart as PieChartIcon,
+  LineChart as LineChartIcon,
 } from "lucide-react";
 
-// Helper to format department names
 const DEPARTMENT_DISPLAY_NAMES = {
   FITTER_MANUFACTURING: "Fitter/Manufacturing",
   ELECTRICAL_ENGINEERING: "Electrical Engineering",
@@ -44,8 +69,10 @@ const DEPARTMENT_DISPLAY_NAMES = {
   AUTOMOTIVE_MECHANIC: "Automotive/Mechanic",
 };
 
+const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#14B8A6', '#F97316', '#06B6D4'];
+
 export default function PolicyMakerDashboard() {
-  const { overview, fetchOverview, isLoading: dashboardLoading, error: dashboardError } = useDashboardStore();
+  const { overview, fetchOverview, fetchLabAnalytics, isLoading: dashboardLoading, error: dashboardError } = useDashboardStore();
   const { alerts, fetchAlerts, resolveAlert } = useAlertStore();
   const {
     labs,
@@ -63,26 +90,21 @@ export default function PolicyMakerDashboard() {
     isLoading: institutesLoading,
   } = useInstituteStore();
 
-  // Filter State
   const [selectedInstitute, setSelectedInstitute] = useState("all");
   const [selectedDepartment, setSelectedDepartment] = useState("all");
   const [selectedLabId, setSelectedLabId] = useState("all");
-
-  // Data State
   const [labManagersCount, setLabManagersCount] = useState(0);
-
-  // Modal State
   const [isLabModalOpen, setIsLabModalOpen] = useState(false);
   const [isInstituteModalOpen, setIsInstituteModalOpen] = useState(false);
   const [editingLab, setEditingLab] = useState(null);
+  const [labAnalytics, setLabAnalytics] = useState(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
 
-  // Initial data load
   useEffect(() => {
     const loadInitialData = async () => {
       try {
         console.log('🚀 Loading Policy Maker Dashboard data...');
         
-        // Fetch data in parallel
         const results = await Promise.allSettled([
           fetchOverview(),
           fetchAlerts({ isResolved: false }),
@@ -90,7 +112,6 @@ export default function PolicyMakerDashboard() {
           fetchLabs(),
         ]);
 
-        // Log any failures
         results.forEach((result, index) => {
           if (result.status === 'rejected') {
             const names = ['Overview', 'Alerts', 'Institutes', 'Labs'];
@@ -98,7 +119,6 @@ export default function PolicyMakerDashboard() {
           }
         });
 
-        // Fetch filtered counts even if some data failed
         fetchFilteredCounts("all", "all", "all");
         
         console.log('✅ Initial data load complete');
@@ -109,7 +129,26 @@ export default function PolicyMakerDashboard() {
     loadInitialData();
   }, []);
 
-  // == FILTER LOGIC ==
+  // Fetch lab analytics when lab is selected
+  useEffect(() => {
+    const fetchAnalytics = async () => {
+      if (selectedLabId !== "all") {
+        setAnalyticsLoading(true);
+        try {
+          const response = await api.get(`/monitoring/lab-analytics/${selectedLabId}`);
+          setLabAnalytics(response.data.data);
+        } catch (error) {
+          console.error("Failed to fetch lab analytics:", error);
+        } finally {
+          setAnalyticsLoading(false);
+        }
+      } else {
+        setLabAnalytics(null);
+      }
+    };
+    fetchAnalytics();
+  }, [selectedLabId]);
+
   const institutesList = institutes;
 
   const departmentsList = useMemo(() => {
@@ -135,7 +174,6 @@ export default function PolicyMakerDashboard() {
     });
   }, [labs, selectedInstitute, selectedDepartment]);
 
-  // Handle filter changes
   const handleInstituteChange = (e) => {
     const inst = e.target.value;
     setSelectedInstitute(inst);
@@ -164,24 +202,20 @@ export default function PolicyMakerDashboard() {
     fetchFilteredCounts(selectedInstitute, selectedDepartment, labId);
   };
 
-  // Fetch counts based on filters
   const fetchFilteredCounts = async (instituteId, department, labId) => {
     try {
-      // Fetch Lab Managers
       const userParams = new URLSearchParams();
       userParams.append("role", "LAB_MANAGER");
       if (instituteId !== "all") userParams.append("instituteId", instituteId);
       
       const userRes = await api.get("/users", { params: userParams });
       
-      // Manual filter by department since backend might not support it
       let managers = userRes.data.data || [];
       if (department !== "all") {
         managers = managers.filter((user) => user.department === department);
       }
       setLabManagersCount(managers.length);
 
-      // Fetch Equipment with proper filters
       const eqParams = {};
       if (instituteId !== "all") eqParams.instituteId = instituteId;
       if (department !== "all") eqParams.department = department;
@@ -193,14 +227,12 @@ export default function PolicyMakerDashboard() {
     }
   };
 
-  // Handle alert resolution with real-time updates
   const handleResolveAlert = async (alertId) => {
     try {
       await resolveAlert(alertId);
-      // Refresh alerts and overview stats immediately
       await Promise.all([
         fetchAlerts({ isResolved: false }),
-        fetchOverview(), // Update the unresolved alerts count
+        fetchOverview(),
       ]);
     } catch (error) {
       console.error("Failed to resolve alert:", error);
@@ -208,7 +240,6 @@ export default function PolicyMakerDashboard() {
     }
   };
 
-  // == MODAL HANDLERS ==
   const handleOpenCreateLab = () => {
     setEditingLab(null);
     setIsLabModalOpen(true);
@@ -229,7 +260,6 @@ export default function PolicyMakerDashboard() {
     }
     try {
       await deleteLab(labId);
-      // Refresh data after deletion
       await fetchLabs();
       if (selectedLabId === labId) {
         setSelectedLabId("all");
@@ -243,16 +273,86 @@ export default function PolicyMakerDashboard() {
   const handleLabModalClose = async () => {
     setIsLabModalOpen(false);
     setEditingLab(null);
-    // Refresh labs after create/update
     await fetchLabs();
   };
 
   const handleInstituteModalClose = async () => {
     setIsInstituteModalOpen(false);
-    // Refresh institutes after create/update/delete
     await fetchInstitutes();
     await fetchLabs();
   };
+
+  // Prepare analytics data for charts
+  const prepareAnalyticsData = () => {
+    if (!labAnalytics || !labAnalytics.equipment) return null;
+
+    const equipment = labAnalytics.equipment;
+
+    // Equipment status distribution
+    const statusData = equipment.reduce((acc, eq) => {
+      const status = eq.status?.status || 'OFFLINE';
+      acc[status] = (acc[status] || 0) + 1;
+      return acc;
+    }, {});
+
+    const statusChartData = Object.entries(statusData).map(([status, count]) => ({
+      name: status.replace(/_/g, ' '),
+      value: count,
+    }));
+
+    // Health score distribution
+    const healthScoreData = equipment.map(eq => ({
+      name: eq.name.substring(0, 20),
+      healthScore: eq.status?.healthScore || 0,
+      efficiency: eq.analyticsParams?.efficiency || 0,
+    }));
+
+    // Performance metrics
+    const performanceData = equipment
+      .filter(eq => eq.analyticsParams)
+      .map(eq => ({
+        name: eq.name.substring(0, 15),
+        efficiency: eq.analyticsParams.efficiency || 0,
+        uptime: eq.analyticsParams.totalUptime || 0,
+        downtime: eq.analyticsParams.totalDowntime || 0,
+        utilization: eq.analyticsParams.utilizationRate || 0,
+      }));
+
+    // Department-specific metrics radar chart
+    const radarMetrics = [];
+    const sampleEquipment = equipment.find(eq => eq.analyticsParams);
+    
+    if (sampleEquipment?.analyticsParams) {
+      const params = sampleEquipment.analyticsParams;
+      
+      if (params.temperature !== null) radarMetrics.push({ metric: 'Temperature', value: Math.min(params.temperature / 100 * 100, 100) });
+      if (params.efficiency !== null) radarMetrics.push({ metric: 'Efficiency', value: params.efficiency });
+      if (params.utilizationRate !== null) radarMetrics.push({ metric: 'Utilization', value: params.utilizationRate });
+      if (params.vibration !== null) radarMetrics.push({ metric: 'Vibration', value: Math.max(0, 100 - params.vibration * 10) });
+      if (params.voltage !== null) radarMetrics.push({ metric: 'Voltage Stability', value: Math.min(params.voltage / 240 * 100, 100) });
+      if (params.powerFactor !== null) radarMetrics.push({ metric: 'Power Factor', value: params.powerFactor * 100 });
+    }
+
+    // Uptime vs Downtime comparison
+    const uptimeDowntimeData = equipment
+      .filter(eq => eq.analyticsParams)
+      .slice(0, 10)
+      .map(eq => ({
+        name: eq.name.substring(0, 12),
+        uptime: eq.analyticsParams.totalUptime || 0,
+        downtime: eq.analyticsParams.totalDowntime || 0,
+      }));
+
+    return {
+      statusChartData,
+      healthScoreData,
+      performanceData,
+      radarMetrics,
+      uptimeDowntimeData,
+    };
+  };
+
+  const analyticsData = labAnalytics ? prepareAnalyticsData() : null;
 
   const isLoading = dashboardLoading || labLoading || institutesLoading;
   
@@ -264,7 +364,6 @@ export default function PolicyMakerDashboard() {
     );
   }
 
-  // Show error if dashboard failed to load
   if (dashboardError && !overview) {
     return (
       <div className="flex items-center justify-center h-96">
@@ -311,18 +410,18 @@ export default function PolicyMakerDashboard() {
   const filteredStats = [
     {
       icon: Users,
-      title: "Lab Managers (Filtered)",
+      title: "Lab Managers",
       value: labManagersCount,
     },
     {
       icon: Box,
-      title: "Equipment (Filtered)",
+      title: "Equipment",
       value: pagination.total || 0,
     },
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-8">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -351,23 +450,36 @@ export default function PolicyMakerDashboard() {
         </div>
       </div>
 
-      {/* Overall Stats */}
-      <div>
-        <h2 className="text-lg font-semibold text-gray-800 mb-3">Overall Statistics</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {overviewStats.map((stat, index) => (
-            <StatCard key={index} {...stat} />
-          ))}
+      {/* Top Section: Overall Stats & Alerts */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-6">
+          <h2 className="text-lg font-semibold text-gray-800 mb-4">Overall Statistics</h2>
+          <div className="grid grid-cols-2 gap-4">
+            {overviewStats.map((stat, index) => (
+              <StatCard key={index} {...stat} />
+            ))}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-6">
+          <h2 className="text-lg font-semibold text-gray-800 mb-4">Recent Alerts</h2>
+          <div className="max-h-64 overflow-y-auto">
+            <AlertsList 
+              alerts={alerts.slice(0, 5)} 
+              onResolve={handleResolveAlert} 
+            />
+          </div>
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-100">
+      {/* Filter Analytics & Filtered Statistics */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-6">
         <div className="flex items-center gap-2 mb-4">
           <Filter className="w-5 h-5 text-gray-600" />
-          <h3 className="font-semibold text-gray-900">Filter Analytics</h3>
+          <h3 className="text-lg font-semibold text-gray-900">Filter Analytics</h3>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           <select
             value={selectedInstitute}
             onChange={handleInstituteChange}
@@ -408,149 +520,348 @@ export default function PolicyMakerDashboard() {
             ))}
           </select>
         </div>
-      </div>
 
-      {/* Filtered Stats */}
-      <div>
-        <h2 className="text-lg font-semibold text-gray-800 mb-3">Filtered Statistics</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {filteredStats.map((stat, index) => (
-            <StatCard key={index} {...stat} />
-          ))}
+        <div>
+          <h3 className="text-sm font-medium text-gray-700 mb-3">Filtered Results</h3>
+          <div className="grid grid-cols-2 gap-4">
+            {filteredStats.map((stat, index) => (
+              <StatCard key={index} {...stat} />
+            ))}
+          </div>
         </div>
       </div>
 
-      {/* Lab List & Analytics */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Labs List */}
-        <div className="lg:col-span-2 bg-white rounded-lg shadow-sm border border-gray-100 p-6">
-          <h2 className="text-xl font-semibold mb-4">
-            Labs ({labsList.length})
-          </h2>
-          <div className="max-h-96 overflow-y-auto space-y-3">
-            {labsList.length === 0 ? (
-              <p className="text-gray-500 text-center py-8">
-                No labs match the selected filters.
-              </p>
-            ) : (
-              labsList.map((lab) => (
-                <div
-                  key={lab.labId}
-                  className={`p-4 rounded-lg border-2 flex items-center justify-between transition-all ${
-                    selectedLabId === lab.labId
-                      ? "border-blue-500 bg-blue-50"
-                      : "border-gray-200 bg-white hover:border-gray-300"
-                  }`}
-                >
-                  <div className="flex-1">
-                    <button
-                      onClick={() =>
-                        handleLabChange({ target: { value: lab.labId } })
-                      }
-                      className="font-semibold text-blue-900 hover:underline text-left"
-                    >
-                      {lab.name}
-                    </button>
-                    <p className="text-sm text-gray-600 mt-1">
-                      {lab.institute?.name || "N/A"} |{" "}
-                      {DEPARTMENT_DISPLAY_NAMES[lab.department] || lab.department}
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1">{lab.labId}</p>
-                  </div>
-                  <div className="flex gap-2">
+      {/* Labs List */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-6">
+        <h2 className="text-xl font-semibold mb-4">
+          Labs ({labsList.length})
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-96 overflow-y-auto">
+          {labsList.length === 0 ? (
+            <p className="text-gray-500 text-center py-8 col-span-full">
+              No labs match the selected filters.
+            </p>
+          ) : (
+            labsList.map((lab) => (
+              <div
+                key={lab.labId}
+                className={`p-4 rounded-lg border-2 transition-all ${
+                  selectedLabId === lab.labId
+                    ? "border-blue-500 bg-blue-50"
+                    : "border-gray-200 bg-white hover:border-gray-300"
+                }`}
+              >
+                <div className="flex items-start justify-between mb-2">
+                  <button
+                    onClick={() =>
+                      handleLabChange({ target: { value: lab.labId } })
+                    }
+                    className="font-semibold text-blue-900 hover:underline text-left flex-1"
+                  >
+                    {lab.name}
+                  </button>
+                  <div className="flex gap-1">
                     <button
                       onClick={() => handleOpenEditLab(lab)}
-                      className="p-2 text-gray-500 hover:text-blue-700 hover:bg-blue-100 rounded-lg transition-colors"
+                      className="p-1.5 text-gray-500 hover:text-blue-700 hover:bg-blue-100 rounded transition-colors"
                       title="Edit Lab"
                     >
                       <Edit className="w-4 h-4" />
                     </button>
                     <button
                       onClick={() => handleDeleteLab(lab.labId)}
-                      className="p-2 text-gray-500 hover:text-red-700 hover:bg-red-100 rounded-lg transition-colors"
+                      className="p-1.5 text-gray-500 hover:text-red-700 hover:bg-red-100 rounded transition-colors"
                       title="Delete Lab"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        {/* Lab Analytics */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-6">
-          <h2 className="text-xl font-semibold mb-4">Lab Analytics</h2>
-          {labLoading ? (
-            <div className="flex justify-center py-8">
-              <LoadingSpinner />
-            </div>
-          ) : labSummary ? (
-            <div className="space-y-4">
-              <h3 className="font-bold text-lg text-blue-900">
-                {labSummary.lab?.name || "Lab"}
-              </h3>
-              <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium text-gray-600">
-                    Total Equipment
-                  </span>
-                  <span className="font-bold text-lg">
-                    {labSummary.statistics?.totalEquipment || 0}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium text-gray-600">
-                    Avg. Health Score
-                  </span>
-                  <span className="font-bold text-lg text-green-600">
-                    {labSummary.statistics?.avgHealthScore?.toFixed(0) || 0}%
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium text-gray-600">
-                    Total Uptime
-                  </span>
-                  <span className="font-bold text-lg">
-                    {labSummary.statistics?.totalUptime?.toFixed(1) || 0} hrs
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium text-gray-600">
-                    Total Downtime
-                  </span>
-                  <span className="font-bold text-lg text-red-600">
-                    {labSummary.statistics?.totalDowntime?.toFixed(1) || 0} hrs
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium text-gray-600">
-                    Equipment In Class
-                  </span>
-                  <span className="font-bold text-lg">
-                    {labSummary.statistics?.inClassEquipment || 0}
-                  </span>
-                </div>
+                <p className="text-sm text-gray-600">
+                  {lab.institute?.name || "N/A"}
+                </p>
+                <p className="text-sm text-gray-600">
+                  {DEPARTMENT_DISPLAY_NAMES[lab.department] || lab.department}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">{lab.labId}</p>
               </div>
-            </div>
-          ) : (
-            <div className="text-center py-10 text-gray-500">
-              <BarChart2 className="w-12 h-12 mx-auto text-gray-300 mb-2" />
-              <p>Select a lab to view its analytics</p>
-            </div>
+            ))
           )}
         </div>
       </div>
 
-      {/* Alerts Section */}
-      <div>
-        <h2 className="text-xl font-semibold mb-4">Recent Alerts</h2>
-        <AlertsList 
-          alerts={alerts.slice(0, 10)} 
-          onResolve={handleResolveAlert} 
-        />
-      </div>
+      {/* Lab Analytics with Charts */}
+      {selectedLabId !== "all" && (
+        <>
+          {/* Summary Stats */}
+          {labSummary && (
+            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg shadow-sm border border-blue-200 p-6">
+              <h2 className="text-xl font-semibold text-blue-900 mb-6">
+                Lab Summary: {labSummary.lab?.name || "Lab"}
+              </h2>
+              
+              {labLoading ? (
+                <div className="flex justify-center py-8">
+                  <LoadingSpinner />
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+                  <div className="bg-white rounded-lg p-6 shadow-sm border border-blue-100">
+                    <div className="flex items-center justify-between mb-4">
+                      <Box className="w-8 h-8 text-blue-600" />
+                      <span className="text-3xl font-bold text-gray-900">
+                        {labSummary.statistics?.totalEquipment || 0}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-600 font-medium">Total Equipment</p>
+                    <div className="mt-2 h-2 bg-gray-200 rounded-full overflow-hidden">
+                      <div className="h-full bg-blue-600 rounded-full transition-all" style={{ width: '100%' }} />
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-lg p-6 shadow-sm border border-green-100">
+                    <div className="flex items-center justify-between mb-4">
+                      <CheckCircle className="w-8 h-8 text-green-600" />
+                      <span className="text-3xl font-bold text-green-600">
+                        {labSummary.statistics?.avgHealthScore?.toFixed(0) || 0}%
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-600 font-medium">Avg Health Score</p>
+                    <div className="mt-2 h-2 bg-gray-200 rounded-full overflow-hidden">
+                      <div className="h-full bg-green-600 rounded-full transition-all" style={{ width: `${labSummary.statistics?.avgHealthScore || 0}%` }} />
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-lg p-6 shadow-sm border border-emerald-100">
+                    <div className="flex items-center justify-between mb-4">
+                      <TrendingUp className="w-8 h-8 text-emerald-600" />
+                      <span className="text-3xl font-bold text-gray-900">
+                        {labSummary.statistics?.totalUptime?.toFixed(1) || 0}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-600 font-medium">Total Uptime (hrs)</p>
+                    <div className="mt-2 h-2 bg-gray-200 rounded-full overflow-hidden">
+                      <div className="h-full bg-emerald-600 rounded-full transition-all" style={{ width: `${Math.min(100, ((labSummary.statistics?.totalUptime || 0) / (labSummary.statistics?.totalUptime + labSummary.statistics?.totalDowntime || 1)) * 100)}%` }} />
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-lg p-6 shadow-sm border border-red-100">
+                    <div className="flex items-center justify-between mb-4">
+                      <TrendingDown className="w-8 h-8 text-red-600" />
+                      <span className="text-3xl font-bold text-red-600">
+                        {labSummary.statistics?.totalDowntime?.toFixed(1) || 0}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-600 font-medium">Total Downtime (hrs)</p>
+                    <div className="mt-2 h-2 bg-gray-200 rounded-full overflow-hidden">
+                      <div className="h-full bg-red-600 rounded-full transition-all" style={{ width: `${Math.min(100, ((labSummary.statistics?.totalDowntime || 0) / (labSummary.statistics?.totalUptime + labSummary.statistics?.totalDowntime || 1)) * 100)}%` }} />
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-lg p-6 shadow-sm border border-purple-100">
+                    <div className="flex items-center justify-between mb-4">
+                      <Clock className="w-8 h-8 text-purple-600" />
+                      <span className="text-3xl font-bold text-gray-900">
+                        {labSummary.statistics?.inClassEquipment || 0}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-600 font-medium">In-Class Equipment</p>
+                    <div className="mt-2 h-2 bg-gray-200 rounded-full overflow-hidden">
+                      <div className="h-full bg-purple-600 rounded-full transition-all" style={{ width: `${Math.min(100, ((labSummary.statistics?.inClassEquipment || 0) / (labSummary.statistics?.totalEquipment || 1)) * 100)}%` }} />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Detailed Analytics Charts */}
+          {analyticsLoading ? (
+            <div className="flex justify-center py-12">
+              <LoadingSpinner size="lg" />
+            </div>
+          ) : analyticsData ? (
+            <div className="space-y-6">
+              {/* Equipment Status & Health Score */}
+              <div className="grid grid-cols-4 lg:grid-cols-4 gap-6">
+                {/* Equipment Status Distribution */}
+                <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-6 col-span-1">
+                  <div className="flex items-center gap-2 mb-4">
+                    <PieChartIcon className="w-5 h-5 text-blue-600" />
+                    <h3 className="text-lg font-semibold text-gray-900">Equipment Status Distribution</h3>
+                  </div>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <PieChart>
+                      <Pie
+                        data={analyticsData.statusChartData}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                        outerRadius={80}
+                        fill="#8884d8"
+                        dataKey="value"
+                      >
+                        {analyticsData.statusChartData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* Health Score Comparison */}
+                <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-6 col-span-3">
+                  <div className="flex items-center gap-2 mb-4">
+                    <BarChart3 className="w-5 h-5 text-green-600" />
+                    <h3 className="text-lg font-semibold text-gray-900">Health Score & Efficiency</h3>
+                  </div>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={analyticsData.healthScoreData.slice(0, 8)}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="name" angle={-45} textAnchor="end" height={80} />
+                      <YAxis />
+                      <Tooltip />
+                      <Legend />
+                      <Bar dataKey="healthScore" fill="#10B981" name="Health Score" />
+                      <Bar dataKey="efficiency" fill="#3B82F6" name="Efficiency %" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              {/* Performance Metrics */}
+              {/* <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <Gauge className="w-5 h-5 text-indigo-600" />
+                  <h3 className="text-lg font-semibold text-gray-900">Equipment Performance Metrics</h3>
+                </div>
+                <ResponsiveContainer width="100%" height={350}>
+                  <BarChart data={analyticsData.performanceData.slice(0, 10)}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} />
+                    <YAxis />
+                    <Tooltip />
+                    <Legend />
+                    <Bar dataKey="efficiency" fill="#8B5CF6" name="Efficiency %" />
+                    <Bar dataKey="utilization" fill="#F59E0B" name="Utilization %" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div> */}
+
+              {/* Uptime vs Downtime */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <LineChartIcon className="w-5 h-5 text-emerald-600" />
+                  <h3 className="text-lg font-semibold text-gray-900">Uptime vs Downtime Analysis</h3>
+                </div>
+                <ResponsiveContainer width="100%" height={350}>
+                  <AreaChart data={analyticsData.uptimeDowntimeData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} />
+                    <YAxis label={{ value: 'Hours', angle: -90, position: 'insideLeft' }} />
+                    <Tooltip />
+                    <Legend />
+                    <Area type="monotone" dataKey="uptime" stackId="1" stroke="#10B981" fill="#10B981" name="Uptime (hrs)" />
+                    <Area type="monotone" dataKey="downtime" stackId="1" stroke="#EF4444" fill="#EF4444" name="Downtime (hrs)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* Radar Chart for Department Metrics */}
+              {analyticsData.radarMetrics.length > 0 && (
+                <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-6">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Activity className="w-5 h-5 text-purple-600" />
+                    <h3 className="text-lg font-semibold text-gray-900">Department-Specific Performance Radar</h3>
+                  </div>
+                  <ResponsiveContainer width="100%" height={400}>
+                    <RadarChart data={analyticsData.radarMetrics}>
+                      <PolarGrid />
+                      <PolarAngleAxis dataKey="metric" />
+                      <PolarRadiusAxis angle={90} domain={[0, 100]} />
+                      <Radar name="Performance" dataKey="value" stroke="#8B5CF6" fill="#8B5CF6" fillOpacity={0.6} />
+                      <Tooltip />
+                      <Legend />
+                    </RadarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+              </div>
+              
+
+              {/* Detailed Equipment Table */}
+              <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Equipment Details</h3>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Equipment</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Health Score</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Efficiency</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Temperature</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Uptime</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Utilization</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {labAnalytics.equipment.map((eq) => (
+                        <tr key={eq.id} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
+                            {eq.name}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                              eq.status?.status === 'OPERATIONAL' ? 'bg-green-100 text-green-800' :
+                              eq.status?.status === 'IN_USE' ? 'bg-blue-100 text-blue-800' :
+                              eq.status?.status === 'MAINTENANCE' ? 'bg-yellow-100 text-yellow-800' :
+                              eq.status?.status === 'FAULTY' ? 'bg-red-100 text-red-800' :
+                              'bg-gray-100 text-gray-800'
+                            }`}>
+                              {eq.status?.status || 'OFFLINE'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                            <div className="flex items-center">
+                              <span className="mr-2">{eq.status?.healthScore?.toFixed(0) || 0}%</span>
+                              <div className="w-16 bg-gray-200 rounded-full h-2">
+                                <div 
+                                  className={`h-2 rounded-full ${
+                                    (eq.status?.healthScore || 0) >= 80 ? 'bg-green-500' :
+                                    (eq.status?.healthScore || 0) >= 50 ? 'bg-yellow-500' :
+                                    'bg-red-500'
+                                  }`}
+                                  style={{ width: `${eq.status?.healthScore || 0}%` }}
+                                />
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                            {eq.analyticsParams?.efficiency?.toFixed(1) || 'N/A'}%
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                            {eq.analyticsParams?.temperature?.toFixed(1) || 'N/A'}°C
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                            {eq.analyticsParams?.totalUptime?.toFixed(1) || 'N/A'}h
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                            {eq.analyticsParams?.utilizationRate?.toFixed(1) || 'N/A'}%
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </>
+      )}
 
       {/* Modals */}
       {isLabModalOpen && (

@@ -548,6 +548,228 @@ class MonitoringController {
       });
     }
   });
+
+// Add this method to your monitoring.controller.js
+
+getLabAnalytics = asyncHandler(async (req, res) => {
+  const { labId } = req.params;
+  
+  try {
+    logger.info(`📊 Fetching analytics for lab: ${labId}`);
+
+    // Get lab details
+    const lab = await prisma.lab.findUnique({
+      where: { labId },
+      include: {
+        institute: {
+          select: {
+            name: true,
+            instituteId: true,
+          },
+        },
+      },
+    });
+
+    if (!lab) {
+      return res.status(404).json({
+        success: false,
+        message: "Lab not found.",
+      });
+    }
+
+    // Check access permissions
+    const roleFilter = filterDataByRole(req);
+    const hasAccess = await prisma.lab.findFirst({
+      where: { id: lab.id, ...roleFilter },
+    });
+
+    if (!hasAccess && req.user.role !== "POLICY_MAKER") {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied to this lab.",
+      });
+    }
+
+    // Fetch all equipment in this lab with their analytics
+    const equipment = await prisma.equipment.findMany({
+      where: {
+        labId: lab.id,
+        isActive: true,
+      },
+      include: {
+        status: true,
+        analyticsParams: true,
+        lab: {
+          select: {
+            name: true,
+            department: true,
+          },
+        },
+      },
+      orderBy: {
+        name: "asc",
+      },
+    });
+
+    // Calculate aggregate statistics
+    const statistics = {
+      totalEquipment: equipment.length,
+      avgHealthScore: 0,
+      totalUptime: 0,
+      totalDowntime: 0,
+      avgEfficiency: 0,
+      avgUtilization: 0,
+      operationalCount: 0,
+      inUseCount: 0,
+      maintenanceCount: 0,
+      faultyCount: 0,
+      offlineCount: 0,
+      inClassEquipment: 0,
+    };
+
+    let healthScoreSum = 0;
+    let efficiencySum = 0;
+    let utilizationSum = 0;
+    let equipmentWithData = 0;
+
+    equipment.forEach((eq) => {
+      // Status counts
+      const status = eq.status?.status || "OFFLINE";
+      switch (status) {
+        case "OPERATIONAL":
+          statistics.operationalCount++;
+          break;
+        case "IN_USE":
+          statistics.inUseCount++;
+          break;
+        case "IN_CLASS":
+          statistics.inClassEquipment++;
+          break;
+        case "MAINTENANCE":
+          statistics.maintenanceCount++;
+          break;
+        case "FAULTY":
+          statistics.faultyCount++;
+          break;
+        default:
+          statistics.offlineCount++;
+      }
+
+      // Health score
+      if (eq.status?.healthScore) {
+        healthScoreSum += eq.status.healthScore;
+      }
+
+      // Analytics data
+      if (eq.analyticsParams) {
+        equipmentWithData++;
+        statistics.totalUptime += eq.analyticsParams.totalUptime || 0;
+        statistics.totalDowntime += eq.analyticsParams.totalDowntime || 0;
+        
+        if (eq.analyticsParams.efficiency) {
+          efficiencySum += eq.analyticsParams.efficiency;
+        }
+        
+        if (eq.analyticsParams.utilizationRate) {
+          utilizationSum += eq.analyticsParams.utilizationRate;
+        }
+      }
+    });
+
+    // Calculate averages
+    if (equipment.length > 0) {
+      statistics.avgHealthScore = healthScoreSum / equipment.length;
+    }
+
+    if (equipmentWithData > 0) {
+      statistics.avgEfficiency = efficiencySum / equipmentWithData;
+      statistics.avgUtilization = utilizationSum / equipmentWithData;
+    }
+
+    // Department-specific analytics aggregation
+    const departmentMetrics = {
+      temperature: [],
+      vibration: [],
+      voltage: [],
+      current: [],
+      powerFactor: [],
+      efficiency: [],
+      spindleSpeed: [],
+      feedRate: [],
+      toolWear: [],
+      printQuality: [],
+      solarEfficiency: [],
+      testAccuracy: [],
+    };
+
+    equipment.forEach((eq) => {
+      if (eq.analyticsParams) {
+        const params = eq.analyticsParams;
+        
+        if (params.temperature !== null) departmentMetrics.temperature.push(params.temperature);
+        if (params.vibration !== null) departmentMetrics.vibration.push(params.vibration);
+        if (params.voltage !== null) departmentMetrics.voltage.push(params.voltage);
+        if (params.current !== null) departmentMetrics.current.push(params.current);
+        if (params.powerFactor !== null) departmentMetrics.powerFactor.push(params.powerFactor);
+        if (params.efficiency !== null) departmentMetrics.efficiency.push(params.efficiency);
+        if (params.spindleSpeed !== null) departmentMetrics.spindleSpeed.push(params.spindleSpeed);
+        if (params.feedRate !== null) departmentMetrics.feedRate.push(params.feedRate);
+        if (params.toolWear !== null) departmentMetrics.toolWear.push(params.toolWear);
+        if (params.printQuality !== null) departmentMetrics.printQuality.push(params.printQuality);
+        if (params.solarEfficiency !== null) departmentMetrics.solarEfficiency.push(params.solarEfficiency);
+        if (params.testAccuracy !== null) departmentMetrics.testAccuracy.push(params.testAccuracy);
+      }
+    });
+
+    // Calculate averages for department metrics
+    const avgDepartmentMetrics = {};
+    Object.keys(departmentMetrics).forEach((key) => {
+      const values = departmentMetrics[key];
+      if (values.length > 0) {
+        avgDepartmentMetrics[key] = {
+          avg: values.reduce((a, b) => a + b, 0) / values.length,
+          min: Math.min(...values),
+          max: Math.max(...values),
+          count: values.length,
+        };
+      }
+    });
+
+    logger.info(`✅ Lab analytics fetched successfully for ${labId}`);
+
+    res.json({
+      success: true,
+      data: {
+        lab: {
+          labId: lab.labId,
+          name: lab.name,
+          department: lab.department,
+          institute: lab.institute,
+        },
+        statistics,
+        departmentMetrics: avgDepartmentMetrics,
+        equipment: equipment.map((eq) => ({
+          id: eq.id,
+          equipmentId: eq.equipmentId,
+          name: eq.name,
+          department: eq.department,
+          manufacturer: eq.manufacturer,
+          model: eq.model,
+          status: eq.status,
+          analyticsParams: eq.analyticsParams,
+          lastUsedAt: eq.status?.lastUsedAt,
+        })),
+      },
+    });
+  } catch (error) {
+    logger.error("❌ Error fetching lab analytics:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch lab analytics",
+      error: error.message,
+    });
+  }
+});
 }
 
 export default new MonitoringController();

@@ -1,3 +1,4 @@
+// backend/routes/monitoring.routes.js (UPDATED)
 import express from 'express';
 import monitoringController from '../controllers/monitoring.controller.js';
 import authMiddleware from '../middlewares/auth.js';
@@ -22,5 +23,8 @@ router.get('/realtime', isAuthenticated, monitoringController.getRealtimeStatus)
 // Get sensor data for specific equipment
 // This uses the *string* equipmentId (e.g., "LAB-001")
 router.get('/sensor/:equipmentId', isAuthenticated, monitoringController.getSensorData);
+
+// NEW: Get comprehensive lab analytics with DepartmentAnalytics
+router.get('/lab-analytics/:labId', isAuthenticated, monitoringController.getLabAnalytics);
 
 export default router;
