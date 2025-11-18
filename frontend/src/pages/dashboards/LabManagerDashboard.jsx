@@ -15,6 +15,10 @@ import AlertsList from "../../components/dashboard/AlertsList";
 import AlertHistoryTable from "../../components/dashboard/AlertHistoryTable";
 import LoadingSpinner from "../../components/common/LoadingSpinner";
 import EquipmentFormModal from "../../components/equipment/EquipmentFormModal";
+import { useBreakdownStore } from "../../stores/breakdownStore";
+import BreakdownEquipmentTable from "../../components/breakdown/BreakdownEquipmentTable";
+import AddBreakdownModal from "../../components/breakdown/AddBreakdownModal";
+import BreakdownAlertModal from "../../components/breakdown/BreakdownAlertModal";
 import {
   Activity,
   AlertTriangle,
@@ -79,6 +83,18 @@ export default function LabManagerDashboard() {
     isLoading: labLoading,
   } = useLabStore();
 
+  const {
+    breakdownEquipment,
+    fetchBreakdownEquipment,
+    respondToBreakdownAlert,
+    addBreakdownEquipment,
+    submitReorderRequest,
+    resolveBreakdown,
+  } = useBreakdownStore();
+
+  const [isAddBreakdownModalOpen, setIsAddBreakdownModalOpen] = useState(false);
+  const [breakdownAlertToRespond, setBreakdownAlertToRespond] = useState(null);
+
   const [selectedLabId, setSelectedLabId] = useState("all");
   const [selectedStatus, setSelectedStatus] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -116,6 +132,7 @@ export default function LabManagerDashboard() {
   useEffect(() => {
     if (!isInitialLoad && user) {
       loadDashboardData();
+      fetchBreakdownEquipment();
     }
   }, [isInitialLoad, user?.id]);
 
@@ -241,17 +258,32 @@ export default function LabManagerDashboard() {
     setEditingEquipment(null);
   };
 
+  const handleAlertClick = (alert) => {
+    if (alert.type === "EQUIPMENT_BREAKDOWN_CHECK") {
+      setBreakdownAlertToRespond(alert);
+    }
+  };
+
   const handleResolveAlert = async (alertId) => {
     try {
+      const alert = activeAlerts.find((a) => a.id === alertId);
+
+      // 1️⃣ Special case: Breakdown alert → open modal instead of resolving immediately
+      if (alert?.type === "EQUIPMENT_BREAKDOWN_CHECK") {
+        setBreakdownAlertToRespond(alert);
+        return;
+      }
+
+      // 2️⃣ Normal resolve logic
       await resolveAlert(alertId);
 
-      // 1. Update Stats
+      // 3️⃣ Update Overview Stats
       fetchOverview();
 
-      // 2. Update Active List (Active Tab)
+      // 4️⃣ Refresh Active Alerts
       await fetchActiveAlertsIsolated();
 
-      // 3. Update History List (History Tab) - force refresh
+      // 5️⃣ Refresh History Alerts (if user is on tab or history already loaded)
       if (historyAlerts.length > 0 || alertTab === "history") {
         fetchHistoryAlertsIsolated();
       }
@@ -592,6 +624,70 @@ export default function LabManagerDashboard() {
           </div>
         </div>
       </div>
+
+      {/* Breakdown Equipment Section */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-100">
+        <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+          <h2 className="text-xl font-semibold flex items-center gap-2">
+            <AlertTriangle className="w-5 h-5 text-red-600" />
+            Breakdown Equipment ({breakdownEquipment.length})
+          </h2>
+          <button
+            onClick={() => setIsAddBreakdownModalOpen(true)}
+            className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700"
+          >
+            Report Breakdown
+          </button>
+        </div>
+
+        <div className="p-6">
+          {breakdownEquipment.length === 0 ? (
+            <p className="text-gray-600 text-center py-6">
+              No breakdowns reported yet.
+            </p>
+          ) : (
+            <BreakdownEquipmentTable
+              breakdowns={breakdownEquipment}
+              onReorder={async (id, data) => {
+                await submitReorderRequest(id, data);
+                await fetchBreakdownEquipment();
+              }}
+              onResolve={async (id) => {
+                await resolveBreakdown(id);
+                await fetchBreakdownEquipment();
+              }}
+            />
+          )}
+        </div>
+      </div>
+
+      {/* Modals */}
+      {breakdownAlertToRespond && (
+        <BreakdownAlertModal
+          isOpen={!!breakdownAlertToRespond}
+          onClose={() => setBreakdownAlertToRespond(null)}
+          alert={breakdownAlertToRespond}
+          onRespond={async (alertId, isBreakdown, reason) => {
+            await respondToBreakdownAlert(alertId, isBreakdown, reason);
+            await Promise.all([
+              fetchActiveAlertsIsolated(),
+              fetchBreakdownEquipment(),
+              fetchOverview(),
+            ]);
+          }}
+        />
+      )}
+
+      {isAddBreakdownModalOpen && (
+        <AddBreakdownModal
+          isOpen={isAddBreakdownModalOpen}
+          onClose={() => setIsAddBreakdownModalOpen(false)}
+          onSubmit={async (equipmentId, reason) => {
+            await addBreakdownEquipment(equipmentId, reason);
+            await fetchBreakdownEquipment();
+          }}
+        />
+      )}
 
       {/* Alerts Section (With Tab Logic and Isolated State) */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-100">

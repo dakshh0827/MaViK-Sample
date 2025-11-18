@@ -1,7 +1,8 @@
-// =====================================================
-// 5. src/stores/alertStore.js
-// =====================================================
-
+/*
+ * =====================================================
+ * frontend/src/stores/alertStore.js (UPDATED)
+ * =====================================================
+ */
 import { create } from "zustand";
 import api from "../lib/axios";
 
@@ -34,5 +35,10 @@ export const useAlertStore = create((set) => ({
     } catch (error) {
       throw error;
     }
+  },
+
+  // NEW: Check if alert is a breakdown alert
+  isBreakdownAlert: (alert) => {
+    return alert.type === "EQUIPMENT_BREAKDOWN_CHECK";
   },
 }));

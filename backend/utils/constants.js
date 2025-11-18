@@ -3,35 +3,26 @@
  * Matches the Prisma schema.
  */
 export const USER_ROLE_ENUM = {
-  POLICY_MAKER: "POLICY_MAKER", // Can manage labs, view all data
-  LAB_MANAGER: "LAB_MANAGER", // Manages equipment in department/institute
-  TRAINER: "TRAINER", // Views equipment in their lab
+  POLICY_MAKER: "POLICY_MAKER",
+  LAB_MANAGER: "LAB_MANAGER",
+  TRAINER: "TRAINER",
 };
 
-/**
- * User Roles as an Array
- */
 export const USER_ROLES = Object.values(USER_ROLE_ENUM);
 
-/**
- * Auth Provider Enum
- */
 export const AUTH_PROVIDER_ENUM = {
   CREDENTIAL: "CREDENTIAL",
   GOOGLE: "GOOGLE",
   GITHUB: "GITHUB",
 };
 
-/**
- * OTP Purpose Enum
- */
 export const OTP_PURPOSE_ENUM = {
   REGISTRATION: "REGISTRATION",
   LOGIN: "LOGIN",
 };
 
 /**
- * Alert Types Enum
+ * Alert Types Enum - UPDATED
  */
 export const ALERT_TYPE = {
   FAULT_DETECTED: "FAULT_DETECTED",
@@ -44,12 +35,10 @@ export const ALERT_TYPE = {
   UNSAFE_PATTERN_DETECTED: "UNSAFE_PATTERN_DETECTED",
   EQUIPMENT_OFFLINE: "EQUIPMENT_OFFLINE",
   LOW_HEALTH_SCORE: "LOW_HEALTH_SCORE",
+  EQUIPMENT_BREAKDOWN_CHECK: "EQUIPMENT_BREAKDOWN_CHECK", // NEW
   CUSTOM: "CUSTOM",
 };
 
-/**
- * Alert Severity Enum
- */
 export const ALERT_SEVERITY = {
   CRITICAL: "CRITICAL",
   HIGH: "HIGH",
@@ -58,7 +47,7 @@ export const ALERT_SEVERITY = {
 };
 
 /**
- * Notification Types Enum
+ * Notification Types Enum - UPDATED
  */
 export const NOTIFICATION_TYPE = {
   ALERT: "ALERT",
@@ -67,11 +56,10 @@ export const NOTIFICATION_TYPE = {
   SYSTEM: "SYSTEM",
   CHAT: "CHAT",
   UNSAFE_PATTERN: "UNSAFE_PATTERN",
+  BREAKDOWN_ALERT: "BREAKDOWN_ALERT", // NEW
+  REORDER_REQUEST: "REORDER_REQUEST", // NEW
 };
 
-/**
- * Department Enum (9 Departments)
- */
 export const DEPARTMENT_ENUM = {
   FITTER_MANUFACTURING: "FITTER_MANUFACTURING",
   ELECTRICAL_ENGINEERING: "ELECTRICAL_ENGINEERING",
@@ -84,9 +72,6 @@ export const DEPARTMENT_ENUM = {
   AUTOMOTIVE_MECHANIC: "AUTOMOTIVE_MECHANIC",
 };
 
-/**
- * Maps Department to its equipment name field
- */
 export const DEPARTMENT_EQUIPMENT_FIELD_MAP = {
   FITTER_MANUFACTURING: "fitterEquipmentName",
   ELECTRICAL_ENGINEERING: "electricalEquipmentName",
@@ -99,10 +84,6 @@ export const DEPARTMENT_EQUIPMENT_FIELD_MAP = {
   AUTOMOTIVE_MECHANIC: "automotiveEquipmentName",
 };
 
-/**
- * Department-specific analytical parameters
- * Defines which parameters are tracked for each department
- */
 export const DEPARTMENT_ANALYTICS_CONFIG = {
   FITTER_MANUFACTURING: {
     required: [
@@ -208,9 +189,6 @@ export const DEPARTMENT_ANALYTICS_CONFIG = {
   },
 };
 
-/**
- * Equipment Status Enum
- */
 export const OPERATIONAL_STATUS = {
   OPERATIONAL: "OPERATIONAL",
   IN_USE: "IN_USE",
@@ -222,9 +200,6 @@ export const OPERATIONAL_STATUS = {
   WARNING: "WARNING",
 };
 
-/**
- * Maintenance Types
- */
 export const MAINTENANCE_TYPE = {
   PREVENTIVE: "PREVENTIVE",
   PREDICTIVE: "PREDICTIVE",
@@ -233,9 +208,6 @@ export const MAINTENANCE_TYPE = {
   ROUTINE: "ROUTINE",
 };
 
-/**
- * Report Types
- */
 export const REPORT_TYPE = {
   DAILY_SUMMARY: "DAILY_SUMMARY",
   WEEKLY_SUMMARY: "WEEKLY_SUMMARY",
@@ -249,3 +221,39 @@ export const REPORT_TYPE = {
   LIFECYCLE_REPORT: "LIFECYCLE_REPORT",
   CUSTOM: "CUSTOM",
 };
+
+/**
+ * Breakdown Equipment Status - NEW
+ */
+export const BREAKDOWN_STATUS = {
+  REPORTED: "REPORTED",
+  REORDER_PENDING: "REORDER_PENDING",
+  REORDER_APPROVED: "REORDER_APPROVED",
+  REORDER_REJECTED: "REORDER_REJECTED",
+  RESOLVED: "RESOLVED",
+};
+
+/**
+ * Reorder Request Status - NEW
+ */
+export const REORDER_STATUS = {
+  PENDING: "PENDING",
+  APPROVED: "APPROVED",
+  REJECTED: "REJECTED",
+  CANCELLED: "CANCELLED",
+};
+
+/**
+ * Reorder Urgency Levels - NEW
+ */
+export const REORDER_URGENCY = {
+  LOW: "LOW",
+  MEDIUM: "MEDIUM",
+  HIGH: "HIGH",
+  CRITICAL: "CRITICAL",
+};
+
+/**
+ * Breakdown check interval (in days) - NEW
+ */
+export const BREAKDOWN_CHECK_DAYS = 15;

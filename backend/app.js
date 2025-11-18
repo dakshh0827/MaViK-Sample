@@ -8,6 +8,7 @@ import routes from "./routes/index.js";
 import { errorHandler, notFoundHandler } from "./middlewares/errorHandler.js";
 import logger from "./utils/logger.js";
 import cookieParser from "cookie-parser";
+import { scheduleBreakdownCheck } from "./jobs/breakdown.scheduler.js";
 
 const app = express();
 
@@ -89,5 +90,7 @@ app.use(notFoundHandler);
 
 // Global error handler
 app.use(errorHandler);
+
+scheduleBreakdownCheck();
 
 export default app;

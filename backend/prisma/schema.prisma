@@ -49,6 +49,10 @@ model User {
   
   isActive      Boolean      @default(true)
   emailVerified Boolean      @default(false)
+
+  breakdownReports      BreakdownEquipment[]
+  reorderRequests       ReorderRequest[]
+  reviewedReorders      ReorderRequest[]     @relation("ReviewedBy")
   
   // --- FIX: ADDED MISSING AUTH FIELDS ---
   authProvider  AuthProvider @default(CREDENTIAL)
@@ -243,6 +247,7 @@ model Equipment {
   alerts          Alert[]
   maintenanceLogs MaintenanceLog[]
   usageAnalytics  UsageAnalytics[]
+  breakdownRecords    BreakdownEquipment[]
   analyticsParams DepartmentAnalytics?
   @@index([labId])
   @@index([department])
@@ -385,6 +390,7 @@ enum AlertType {
   HIGH_ENERGY_CONSUMPTION
   MAINTENANCE_DUE
   WARRANTY_EXPIRING
+  EQUIPMENT_BREAKDOWN_CHECK
   UNSAFE_USAGE
   UNSAFE_PATTERN_DETECTED // NEW: For unsafe patterns during class
   EQUIPMENT_OFFLINE
@@ -419,6 +425,8 @@ model Notification {
 enum NotificationType {
   ALERT
   MAINTENANCE
+  BREAKDOWN_ALERT       
+  REORDER_REQUEST
   REPORT
   SYSTEM
   CHAT
@@ -538,4 +546,68 @@ model SystemConfig {
   updatedAt   DateTime @updatedAt
 
   @@map("system_config")
+}
+
+model BreakdownEquipment {
+  id              String                @id @default(auto()) @map("_id") @db.ObjectId
+  equipmentId     String                @db.ObjectId
+  equipment       Equipment             @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  reportedBy      String                @db.ObjectId
+  reportedByUser  User                  @relation(fields: [reportedBy], references: [id])
+  reason          String?               // Reason for breakdown
+  reportedAt      DateTime              @default(now())
+  isAutoDetected  Boolean               @default(false) // True if detected by 15-day check
+  status          BreakdownStatus       @default(REPORTED)
+  reorderRequests ReorderRequest[]
+  
+  @@map("breakdown_equipment")
+  @@index([equipmentId])
+  @@index([reportedBy])
+}
+
+enum BreakdownStatus {
+  REPORTED       // Equipment marked as broken down
+  REORDER_PENDING // Reorder request submitted
+  REORDER_APPROVED // Reorder approved by policy maker
+  REORDER_REJECTED // Reorder rejected by policy maker
+  RESOLVED       // Equipment fixed/replaced
+}
+
+// ==================== REORDER REQUEST MODEL ====================
+model ReorderRequest {
+  id                  String              @id @default(auto()) @map("_id") @db.ObjectId
+  breakdownId         String              @db.ObjectId
+  breakdown           BreakdownEquipment  @relation(fields: [breakdownId], references: [id], onDelete: Cascade)
+  requestedBy         String              @db.ObjectId
+  requestedByUser     User                @relation(fields: [requestedBy], references: [id])
+  equipmentName       String
+  quantity            Int                 @default(1)
+  urgency             ReorderUrgency      @default(MEDIUM)
+  reason              String
+  estimatedCost       Float?
+  status              ReorderStatus       @default(PENDING)
+  reviewedBy          String?             @db.ObjectId
+  reviewedByUser      User?               @relation("ReviewedBy", fields: [reviewedBy], references: [id])
+  reviewedAt          DateTime?
+  reviewComments      String?
+  requestedAt         DateTime            @default(now())
+  
+  @@map("reorder_requests")
+  @@index([breakdownId])
+  @@index([requestedBy])
+  @@index([status])
+}
+
+enum ReorderUrgency {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ReorderStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
 }
