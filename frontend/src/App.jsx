@@ -15,6 +15,7 @@ import { useAuthStore } from "./stores/authStore";
 // Pages
 import LandingPage from "./pages/LandingPage";
 import LoginPage from "./pages/auth/LoginPage";
+
 import SignupPage from "./pages/auth/SignupPage";
 import VerifyEmailPage from "./pages/auth/VerifyEmailPage";
 import TrainerDashboard from "./pages/dashboards/TrainerDashboard";
@@ -25,6 +26,8 @@ import ChatbotPage from "./pages/ChatbotPage";
 import HelpSupportPage from "./pages/HelpSupportPage";
 import SLDPage from "./pages/SLDPage";
 import ReportGenerationPage from "./pages/ReportGenerationPage";
+import LabAnalyticsPage from "./pages/dashboards/LabAnalyticsPage";
+import ReorderRequestsPage from "./pages/dashboards/ReorderRequestsPage";
 
 // Layout
 import DashboardLayout from "./components/layout/DashboardLayout";
@@ -37,7 +40,7 @@ function App() {
   useEffect(() => {
     // CRITICAL FIX: Only check auth once on mount
     if (!hasCheckedAuth.current) {
-      console.log('🚀 App mounted, checking auth...');
+      console.log("🚀 App mounted, checking auth...");
       hasCheckedAuth.current = true;
       checkAuth();
     }
@@ -78,6 +81,11 @@ function App() {
           <Route path="/chatbot" element={<ChatbotPage />} />
           <Route path="/help" element={<HelpSupportPage />} />
           <Route path="/sld" element={<SLDPage />} />
+          <Route
+            path="/dashboard/lab-analytics/:labId"
+            element={<LabAnalyticsPage />}
+          />
+          <Route path="/reorder-requests" element={<ReorderRequestsPage />} />
           <Route path="/reports" element={<ReportGenerationPage />} />
         </Route>
 

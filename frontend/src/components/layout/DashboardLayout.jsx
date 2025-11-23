@@ -2,7 +2,13 @@
 // 10. src/components/layout/DashboardLayout.jsx
 // =====================================================
 
-import { Outlet, Link, useNavigate, useLocation } from "react-router-dom";
+import {
+  Outlet,
+  Link,
+  useNavigate,
+  useLocation,
+  useOutletContext,
+} from "react-router-dom";
 import {
   Menu,
   Home,
@@ -12,12 +18,29 @@ import {
   GitBranch,
   User,
   LogOut,
+  Plus,
+  School,
+  Building,
+  MonitorPlay,
 } from "lucide-react";
 import { useState } from "react";
 import { useAuthStore } from "../../stores/authStore";
 
+// Import Modals
+import InstituteManagerForm from "../../components/admin/InstituteManagerForm";
+import LabManagerForm from "../../components/admin/labManagerForm";
+
 export default function DashboardLayout() {
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
+  const [isQuickMenuOpen, setIsQuickMenuOpen] = useState(false);
+
+  // Modal States
+  const [isInstituteModalOpen, setIsInstituteModalOpen] = useState(false);
+  const [isLabModalOpen, setIsLabModalOpen] = useState(false);
+
+  // State to trigger Equipment Modal in child component
+  const [triggerEquipmentModal, setTriggerEquipmentModal] = useState(0);
+
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
   const location = useLocation();
@@ -37,6 +60,61 @@ export default function DashboardLayout() {
   ];
 
   const sidebarWidth = isSidebarCollapsed ? "5rem" : "16rem";
+  const role = user?.role;
+
+  // Render Quick Action Options based on Role
+  const renderQuickActions = () => {
+    if (role === "POLICY_MAKER") {
+      return (
+        <>
+          <button
+            onClick={() => {
+              setIsInstituteModalOpen(true);
+              setIsQuickMenuOpen(false);
+            }}
+            className="w-full flex items-center gap-3 p-3 text-sm font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-900 rounded-lg transition-colors text-left"
+          >
+            <div className="p-1.5 bg-blue-100 text-blue-800 rounded-md">
+              <School size={18} />
+            </div>
+            <span>Manage Institutes</span>
+          </button>
+          <button
+            onClick={() => {
+              setIsLabModalOpen(true);
+              setIsQuickMenuOpen(false);
+            }}
+            className="w-full flex items-center gap-3 p-3 text-sm font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-900 rounded-lg transition-colors text-left"
+          >
+            <div className="p-1.5 bg-blue-100 text-blue-800 rounded-md">
+              <Building size={18} />
+            </div>
+            <span>Add New Lab</span>
+          </button>
+        </>
+      );
+    }
+
+    if (role === "LAB_MANAGER") {
+      return (
+        <button
+          onClick={() => {
+            // Instead of opening a local modal, we trigger the context
+            setTriggerEquipmentModal((prev) => prev + 1);
+            setIsQuickMenuOpen(false);
+          }}
+          className="w-full flex items-center gap-3 p-3 text-sm font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-900 rounded-lg transition-colors text-left"
+        >
+          <div className="p-1.5 bg-blue-100 text-blue-800 rounded-md">
+            <MonitorPlay size={18} />
+          </div>
+          <span>Add Equipment</span>
+        </button>
+      );
+    }
+
+    return null;
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 overflow-x-hidden">
@@ -44,12 +122,12 @@ export default function DashboardLayout() {
       <aside
         className={`
           fixed left-0 top-0 inset-y-0 bg-white border-r border-gray-200
-          transition-all duration-300 z-50
+          transition-all duration-300 z-50 flex flex-col
           ${isSidebarCollapsed ? "w-20" : "w-64"}
         `}
       >
         {/* Sidebar Header */}
-        <div className="h-16 flex items-center px-4">
+        <div className="h-16 flex items-center px-4 flex-shrink-0">
           <button
             onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
             className="p-2 rounded-md text-gray-600 hover:bg-gray-100"
@@ -59,7 +137,7 @@ export default function DashboardLayout() {
         </div>
 
         {/* Navigation */}
-        <nav className="mt-4 px-3 space-y-2">
+        <nav className="mt-4 px-3 space-y-2 flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar">
           {navItems.map((item) => {
             const isActive = location.pathname === item.path;
 
@@ -76,12 +154,12 @@ export default function DashboardLayout() {
                   }
                 `}
               >
-                {/* Icon Wrapper to avoid shifting */}
+                {/* Icon Wrapper */}
                 <div className="w-6 flex justify-center">
                   <item.icon size={20} />
                 </div>
 
-                {/* LABEL WITH SMOOTH FADE */}
+                {/* LABEL */}
                 <span
                   className={`
                     whitespace-nowrap
@@ -99,14 +177,63 @@ export default function DashboardLayout() {
             );
           })}
         </nav>
+
+        {/* QUICK ACTIONS (Bottom Sidebar) */}
+        {(role === "POLICY_MAKER" || role === "LAB_MANAGER") && (
+          <div className="p-3 border-t border-gray-100 bg-white relative overflow-visible">
+            {/* The Pop-up Menu Card */}
+            <div
+              className={`
+                absolute bottom-full left-2 mb-3
+                w-64 bg-white border border-gray-200 shadow-xl rounded-xl p-2
+                flex flex-col gap-1 z-[60]
+                transition-all duration-200 origin-bottom-left
+                ${
+                  isQuickMenuOpen
+                    ? "opacity-100 scale-100 visible translate-y-0"
+                    : "opacity-0 scale-95 invisible translate-y-2"
+                }
+              `}
+            >
+              <div className="px-3 py-2 text-xs font-bold text-gray-400 uppercase tracking-wider border-b border-gray-100 mb-1">
+                Quick Actions
+              </div>
+              {renderQuickActions()}
+            </div>
+
+            {/* The Plus Button */}
+            <button
+              onClick={() => setIsQuickMenuOpen(!isQuickMenuOpen)}
+              className={`
+                flex items-center justify-center w-full
+                bg-blue-600 hover:bg-blue-700 text-white
+                shadow-md rounded-lg transition-all duration-300
+                ${isSidebarCollapsed ? "h-10 px-0" : "h-10 gap-2 px-4"}
+              `}
+              title="Quick Actions"
+            >
+              <div
+                className={`transition-transform duration-300 ${
+                  isQuickMenuOpen ? "rotate-45" : ""
+                }`}
+              >
+                <Plus size={20} />
+              </div>
+              {!isSidebarCollapsed && (
+                <span className="font-medium">Quick Add</span>
+              )}
+            </button>
+          </div>
+        )}
       </aside>
 
       {/* NAVBAR */}
       <header
-        className="fixed top-0 h-16 bg-white z-40 flex items-center justify-between px-6"
+        className="fixed top-0 h-16 bg-white z-40 flex items-center justify-between px-6 border-b border-gray-200"
         style={{
           left: sidebarWidth,
           right: 0,
+          transition: "left 0.3s ease",
         }}
       >
         <h1 className="text-lg font-bold text-blue-900">
@@ -134,12 +261,29 @@ export default function DashboardLayout() {
         className="p-4 sm:p-6 lg:p-8 overflow-auto"
         style={{
           marginLeft: sidebarWidth,
-          paddingTop: "4.5rem",
+          paddingTop: "5rem",
           transition: "margin-left 0.3s ease",
         }}
       >
-        <Outlet />
+        {/* Pass the trigger state down via context */}
+        <Outlet context={{ triggerEquipmentModal }} />
       </main>
+
+      {/* GLOBAL MODALS */}
+      {isInstituteModalOpen && (
+        <InstituteManagerForm
+          isOpen={isInstituteModalOpen}
+          onClose={() => setIsInstituteModalOpen(false)}
+        />
+      )}
+
+      {isLabModalOpen && (
+        <LabManagerForm
+          isOpen={isLabModalOpen}
+          onClose={() => setIsLabModalOpen(false)}
+          labToEdit={null} // Create mode
+        />
+      )}
     </div>
   );
 }

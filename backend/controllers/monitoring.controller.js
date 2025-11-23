@@ -29,7 +29,7 @@ const getPolicyMakerDashboard = async () => {
   try {
     const sevenDaysFromNow = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
-    logger.info('📊 Fetching Policy Maker Dashboard data...');
+    logger.info("📊 Fetching Policy Maker Dashboard data...");
 
     // 1. Get high-level overview stats
     const [
@@ -55,7 +55,9 @@ const getPolicyMakerDashboard = async () => {
       prisma.institute.count(),
     ]);
 
-    logger.info(`✅ Basic stats fetched: ${totalEquipment} equipment, ${unresolvedAlerts} alerts`);
+    logger.info(
+      `✅ Basic stats fetched: ${totalEquipment} equipment, ${unresolvedAlerts} alerts`
+    );
 
     // 2. Get all institutes with their labs
     const institutes = await prisma.institute.findMany({
@@ -65,7 +67,7 @@ const getPolicyMakerDashboard = async () => {
         name: true,
       },
       orderBy: {
-        name: 'asc',
+        name: "asc",
       },
     });
 
@@ -84,7 +86,7 @@ const getPolicyMakerDashboard = async () => {
       return acc;
     }, {});
 
-    logger.info('✅ Lab counts calculated');
+    logger.info("✅ Lab counts calculated");
 
     // 4. Get equipment counts per institute
     const equipmentByInstitute = await prisma.equipment.findMany({
@@ -108,7 +110,7 @@ const getPolicyMakerDashboard = async () => {
       return acc;
     }, {});
 
-    logger.info('✅ Equipment counts calculated');
+    logger.info("✅ Equipment counts calculated");
 
     // 5. Get alert counts per institute
     const alertsByInstitute = await prisma.alert.findMany({
@@ -136,7 +138,7 @@ const getPolicyMakerDashboard = async () => {
       return acc;
     }, {});
 
-    logger.info('✅ Alert counts calculated');
+    logger.info("✅ Alert counts calculated");
 
     // 6. Combine all data
     const institutionsData = institutes.map((inst) => ({
@@ -158,10 +160,10 @@ const getPolicyMakerDashboard = async () => {
       institutions: institutionsData,
     };
 
-    logger.info('✅ Policy Maker Dashboard data compiled successfully');
+    logger.info("✅ Policy Maker Dashboard data compiled successfully");
     return result;
   } catch (error) {
-    logger.error('❌ Error in getPolicyMakerDashboard:', error);
+    logger.error("❌ Error in getPolicyMakerDashboard:", error);
     throw error;
   }
 };
@@ -173,7 +175,7 @@ const getLabTechAndUserDashboard = async (roleFilter) => {
   try {
     const sevenDaysFromNow = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
-    logger.info('📊 Fetching Lab Manager/Trainer Dashboard data...');
+    logger.info("📊 Fetching Lab Manager/Trainer Dashboard data...");
 
     const [
       totalEquipment,
@@ -232,7 +234,7 @@ const getLabTechAndUserDashboard = async (roleFilter) => {
       }),
     ]);
 
-    logger.info('✅ Lab Manager/Trainer Dashboard data compiled successfully');
+    logger.info("✅ Lab Manager/Trainer Dashboard data compiled successfully");
 
     return {
       overview: {
@@ -249,7 +251,7 @@ const getLabTechAndUserDashboard = async (roleFilter) => {
       })),
     };
   } catch (error) {
-    logger.error('❌ Error in getLabTechAndUserDashboard:', error);
+    logger.error("❌ Error in getLabTechAndUserDashboard:", error);
     throw error;
   }
 };
@@ -261,16 +263,16 @@ class MonitoringController {
       where: { ...roleFilter, isActive: true },
       include: {
         status: true,
-        lab: { 
-          select: { 
-            name: true, 
+        lab: {
+          select: {
+            name: true,
             instituteId: true,
             institute: {
               select: {
                 name: true,
               },
             },
-          } 
+          },
         },
       },
       orderBy: { name: "asc" },
@@ -355,15 +357,15 @@ class MonitoringController {
         id: true,
         name: true,
         labId: true,
-        lab: { 
-          select: { 
+        lab: {
+          select: {
             instituteId: true,
             institute: {
               select: {
                 name: true,
               },
             },
-          } 
+          },
         },
       },
     });
@@ -522,7 +524,7 @@ class MonitoringController {
   getDashboardOverview = asyncHandler(async (req, res) => {
     try {
       const { role } = req.user;
-      
+
       logger.info(`📊 Dashboard overview requested by user role: ${role}`);
 
       let data;
@@ -533,243 +535,282 @@ class MonitoringController {
         data = await getLabTechAndUserDashboard(roleFilter);
       }
 
-      logger.info('✅ Dashboard overview fetched successfully');
+      logger.info("✅ Dashboard overview fetched successfully");
 
       res.json({
         success: true,
         data,
       });
     } catch (error) {
-      logger.error('❌ Error in getDashboardOverview:', error);
+      logger.error("❌ Error in getDashboardOverview:", error);
       res.status(500).json({
         success: false,
-        message: 'Failed to fetch dashboard overview',
+        message: "Failed to fetch dashboard overview",
         error: error.message,
       });
     }
   });
 
-// Add this method to your monitoring.controller.js
+  // Add this method to your monitoring.controller.js
 
-getLabAnalytics = asyncHandler(async (req, res) => {
-  const { labId } = req.params;
-  
-  try {
-    logger.info(`📊 Fetching analytics for lab: ${labId}`);
+  // Add this fixed method to your monitoring.controller.js
+  // Replace the existing getLabAnalytics method
 
-    // Get lab details
-    const lab = await prisma.lab.findUnique({
-      where: { labId },
-      include: {
-        institute: {
-          select: {
-            name: true,
-            instituteId: true,
+  getLabAnalytics = asyncHandler(async (req, res) => {
+    const { labId } = req.params;
+    const {
+      role,
+      instituteId: userInstituteId,
+      department: userDepartment,
+      labId: userLabId,
+    } = req.user;
+
+    try {
+      logger.info(`📊 Fetching analytics for lab: ${labId} by ${role}`);
+
+      // Get lab details
+      const lab = await prisma.lab.findUnique({
+        where: { labId },
+        include: {
+          institute: {
+            select: {
+              name: true,
+              instituteId: true,
+            },
           },
         },
-      },
-    });
-
-    if (!lab) {
-      return res.status(404).json({
-        success: false,
-        message: "Lab not found.",
       });
-    }
 
-    // Check access permissions
-    const roleFilter = filterDataByRole(req);
-    const hasAccess = await prisma.lab.findFirst({
-      where: { id: lab.id, ...roleFilter },
-    });
+      if (!lab) {
+        return res.status(404).json({
+          success: false,
+          message: "Lab not found.",
+        });
+      }
 
-    if (!hasAccess && req.user.role !== "POLICY_MAKER") {
-      return res.status(403).json({
-        success: false,
-        message: "Access denied to this lab.",
-      });
-    }
+      // ✅ FIXED: Proper access control for Lab Managers
+      if (role === "LAB_MANAGER") {
+        // Lab Managers can only access labs in their institute + department
+        if (
+          lab.instituteId !== userInstituteId ||
+          lab.department !== userDepartment
+        ) {
+          logger.warn(
+            `❌ Access denied: Lab Manager from ${userInstituteId}/${userDepartment} tried to access ${lab.instituteId}/${lab.department}`
+          );
+          return res.status(403).json({
+            success: false,
+            message: "Access denied to this lab.",
+          });
+        }
+      } else if (role === "TRAINER") {
+        // Trainers can only access their assigned lab
+        if (lab.id !== userLabId) {
+          logger.warn(`❌ Access denied: Trainer tried to access wrong lab`);
+          return res.status(403).json({
+            success: false,
+            message: "Access denied to this lab.",
+          });
+        }
+      }
+      // POLICY_MAKER has access to all labs (no check needed)
 
-    // Fetch all equipment in this lab with their analytics
-    const equipment = await prisma.equipment.findMany({
-      where: {
-        labId: lab.id,
-        isActive: true,
-      },
-      include: {
-        status: true,
-        analyticsParams: true,
-        lab: {
-          select: {
-            name: true,
-            department: true,
+      logger.info(`✅ Access granted for ${role}`);
+
+      // Fetch all equipment in this lab with their analytics
+      const equipment = await prisma.equipment.findMany({
+        where: {
+          labId: lab.id,
+          isActive: true,
+        },
+        include: {
+          status: true,
+          analyticsParams: true,
+          lab: {
+            select: {
+              name: true,
+              department: true,
+            },
           },
         },
-      },
-      orderBy: {
-        name: "asc",
-      },
-    });
-
-    // Calculate aggregate statistics
-    const statistics = {
-      totalEquipment: equipment.length,
-      avgHealthScore: 0,
-      totalUptime: 0,
-      totalDowntime: 0,
-      avgEfficiency: 0,
-      avgUtilization: 0,
-      operationalCount: 0,
-      inUseCount: 0,
-      maintenanceCount: 0,
-      faultyCount: 0,
-      offlineCount: 0,
-      inClassEquipment: 0,
-    };
-
-    let healthScoreSum = 0;
-    let efficiencySum = 0;
-    let utilizationSum = 0;
-    let equipmentWithData = 0;
-
-    equipment.forEach((eq) => {
-      // Status counts
-      const status = eq.status?.status || "OFFLINE";
-      switch (status) {
-        case "OPERATIONAL":
-          statistics.operationalCount++;
-          break;
-        case "IN_USE":
-          statistics.inUseCount++;
-          break;
-        case "IN_CLASS":
-          statistics.inClassEquipment++;
-          break;
-        case "MAINTENANCE":
-          statistics.maintenanceCount++;
-          break;
-        case "FAULTY":
-          statistics.faultyCount++;
-          break;
-        default:
-          statistics.offlineCount++;
-      }
-
-      // Health score
-      if (eq.status?.healthScore) {
-        healthScoreSum += eq.status.healthScore;
-      }
-
-      // Analytics data
-      if (eq.analyticsParams) {
-        equipmentWithData++;
-        statistics.totalUptime += eq.analyticsParams.totalUptime || 0;
-        statistics.totalDowntime += eq.analyticsParams.totalDowntime || 0;
-        
-        if (eq.analyticsParams.efficiency) {
-          efficiencySum += eq.analyticsParams.efficiency;
-        }
-        
-        if (eq.analyticsParams.utilizationRate) {
-          utilizationSum += eq.analyticsParams.utilizationRate;
-        }
-      }
-    });
-
-    // Calculate averages
-    if (equipment.length > 0) {
-      statistics.avgHealthScore = healthScoreSum / equipment.length;
-    }
-
-    if (equipmentWithData > 0) {
-      statistics.avgEfficiency = efficiencySum / equipmentWithData;
-      statistics.avgUtilization = utilizationSum / equipmentWithData;
-    }
-
-    // Department-specific analytics aggregation
-    const departmentMetrics = {
-      temperature: [],
-      vibration: [],
-      voltage: [],
-      current: [],
-      powerFactor: [],
-      efficiency: [],
-      spindleSpeed: [],
-      feedRate: [],
-      toolWear: [],
-      printQuality: [],
-      solarEfficiency: [],
-      testAccuracy: [],
-    };
-
-    equipment.forEach((eq) => {
-      if (eq.analyticsParams) {
-        const params = eq.analyticsParams;
-        
-        if (params.temperature !== null) departmentMetrics.temperature.push(params.temperature);
-        if (params.vibration !== null) departmentMetrics.vibration.push(params.vibration);
-        if (params.voltage !== null) departmentMetrics.voltage.push(params.voltage);
-        if (params.current !== null) departmentMetrics.current.push(params.current);
-        if (params.powerFactor !== null) departmentMetrics.powerFactor.push(params.powerFactor);
-        if (params.efficiency !== null) departmentMetrics.efficiency.push(params.efficiency);
-        if (params.spindleSpeed !== null) departmentMetrics.spindleSpeed.push(params.spindleSpeed);
-        if (params.feedRate !== null) departmentMetrics.feedRate.push(params.feedRate);
-        if (params.toolWear !== null) departmentMetrics.toolWear.push(params.toolWear);
-        if (params.printQuality !== null) departmentMetrics.printQuality.push(params.printQuality);
-        if (params.solarEfficiency !== null) departmentMetrics.solarEfficiency.push(params.solarEfficiency);
-        if (params.testAccuracy !== null) departmentMetrics.testAccuracy.push(params.testAccuracy);
-      }
-    });
-
-    // Calculate averages for department metrics
-    const avgDepartmentMetrics = {};
-    Object.keys(departmentMetrics).forEach((key) => {
-      const values = departmentMetrics[key];
-      if (values.length > 0) {
-        avgDepartmentMetrics[key] = {
-          avg: values.reduce((a, b) => a + b, 0) / values.length,
-          min: Math.min(...values),
-          max: Math.max(...values),
-          count: values.length,
-        };
-      }
-    });
-
-    logger.info(`✅ Lab analytics fetched successfully for ${labId}`);
-
-    res.json({
-      success: true,
-      data: {
-        lab: {
-          labId: lab.labId,
-          name: lab.name,
-          department: lab.department,
-          institute: lab.institute,
+        orderBy: {
+          name: "asc",
         },
-        statistics,
-        departmentMetrics: avgDepartmentMetrics,
-        equipment: equipment.map((eq) => ({
-          id: eq.id,
-          equipmentId: eq.equipmentId,
-          name: eq.name,
-          department: eq.department,
-          manufacturer: eq.manufacturer,
-          model: eq.model,
-          status: eq.status,
-          analyticsParams: eq.analyticsParams,
-          lastUsedAt: eq.status?.lastUsedAt,
-        })),
-      },
-    });
-  } catch (error) {
-    logger.error("❌ Error fetching lab analytics:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch lab analytics",
-      error: error.message,
-    });
-  }
-});
+      });
+
+      logger.info(`📦 Found ${equipment.length} equipment in lab`);
+
+      // Calculate aggregate statistics
+      const statistics = {
+        totalEquipment: equipment.length,
+        avgHealthScore: 0,
+        totalUptime: 0,
+        totalDowntime: 0,
+        avgEfficiency: 0,
+        avgUtilization: 0,
+        operationalCount: 0,
+        inUseCount: 0,
+        maintenanceCount: 0,
+        faultyCount: 0,
+        offlineCount: 0,
+        inClassEquipment: 0,
+      };
+
+      let healthScoreSum = 0;
+      let efficiencySum = 0;
+      let utilizationSum = 0;
+      let equipmentWithData = 0;
+
+      equipment.forEach((eq) => {
+        // Status counts
+        const status = eq.status?.status || "OFFLINE";
+        switch (status) {
+          case "OPERATIONAL":
+            statistics.operationalCount++;
+            break;
+          case "IN_USE":
+            statistics.inUseCount++;
+            break;
+          case "IN_CLASS":
+            statistics.inClassEquipment++;
+            break;
+          case "MAINTENANCE":
+            statistics.maintenanceCount++;
+            break;
+          case "FAULTY":
+            statistics.faultyCount++;
+            break;
+          default:
+            statistics.offlineCount++;
+        }
+
+        // Health score
+        if (eq.status?.healthScore) {
+          healthScoreSum += eq.status.healthScore;
+        }
+
+        // Analytics data
+        if (eq.analyticsParams) {
+          equipmentWithData++;
+          statistics.totalUptime += eq.analyticsParams.totalUptime || 0;
+          statistics.totalDowntime += eq.analyticsParams.totalDowntime || 0;
+
+          if (eq.analyticsParams.efficiency) {
+            efficiencySum += eq.analyticsParams.efficiency;
+          }
+
+          if (eq.analyticsParams.utilizationRate) {
+            utilizationSum += eq.analyticsParams.utilizationRate;
+          }
+        }
+      });
+
+      // Calculate averages
+      if (equipment.length > 0) {
+        statistics.avgHealthScore = healthScoreSum / equipment.length;
+      }
+
+      if (equipmentWithData > 0) {
+        statistics.avgEfficiency = efficiencySum / equipmentWithData;
+        statistics.avgUtilization = utilizationSum / equipmentWithData;
+      }
+
+      // Department-specific analytics aggregation
+      const departmentMetrics = {
+        temperature: [],
+        vibration: [],
+        voltage: [],
+        current: [],
+        powerFactor: [],
+        efficiency: [],
+        spindleSpeed: [],
+        feedRate: [],
+        toolWear: [],
+        printQuality: [],
+        solarEfficiency: [],
+        testAccuracy: [],
+      };
+
+      equipment.forEach((eq) => {
+        if (eq.analyticsParams) {
+          const params = eq.analyticsParams;
+
+          if (params.temperature !== null)
+            departmentMetrics.temperature.push(params.temperature);
+          if (params.vibration !== null)
+            departmentMetrics.vibration.push(params.vibration);
+          if (params.voltage !== null)
+            departmentMetrics.voltage.push(params.voltage);
+          if (params.current !== null)
+            departmentMetrics.current.push(params.current);
+          if (params.powerFactor !== null)
+            departmentMetrics.powerFactor.push(params.powerFactor);
+          if (params.efficiency !== null)
+            departmentMetrics.efficiency.push(params.efficiency);
+          if (params.spindleSpeed !== null)
+            departmentMetrics.spindleSpeed.push(params.spindleSpeed);
+          if (params.feedRate !== null)
+            departmentMetrics.feedRate.push(params.feedRate);
+          if (params.toolWear !== null)
+            departmentMetrics.toolWear.push(params.toolWear);
+          if (params.printQuality !== null)
+            departmentMetrics.printQuality.push(params.printQuality);
+          if (params.solarEfficiency !== null)
+            departmentMetrics.solarEfficiency.push(params.solarEfficiency);
+          if (params.testAccuracy !== null)
+            departmentMetrics.testAccuracy.push(params.testAccuracy);
+        }
+      });
+
+      // Calculate averages for department metrics
+      const avgDepartmentMetrics = {};
+      Object.keys(departmentMetrics).forEach((key) => {
+        const values = departmentMetrics[key];
+        if (values.length > 0) {
+          avgDepartmentMetrics[key] = {
+            avg: values.reduce((a, b) => a + b, 0) / values.length,
+            min: Math.min(...values),
+            max: Math.max(...values),
+            count: values.length,
+          };
+        }
+      });
+
+      logger.info(`✅ Lab analytics compiled successfully for ${labId}`);
+
+      res.json({
+        success: true,
+        data: {
+          lab: {
+            labId: lab.labId,
+            name: lab.name,
+            department: lab.department,
+            institute: lab.institute,
+          },
+          statistics,
+          departmentMetrics: avgDepartmentMetrics,
+          equipment: equipment.map((eq) => ({
+            id: eq.id,
+            equipmentId: eq.equipmentId,
+            name: eq.name,
+            department: eq.department,
+            manufacturer: eq.manufacturer,
+            model: eq.model,
+            status: eq.status,
+            analyticsParams: eq.analyticsParams,
+            lastUsedAt: eq.status?.lastUsedAt,
+          })),
+        },
+      });
+    } catch (error) {
+      logger.error("❌ Error fetching lab analytics:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to fetch lab analytics",
+        error: error.message,
+      });
+    }
+  });
 }
 
 export default new MonitoringController();

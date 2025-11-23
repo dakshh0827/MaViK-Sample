@@ -1,9 +1,14 @@
 /*
  * =====================================================
- * LabManagerDashboard.jsx - ORIGINAL UI + STATE ISOLATION FIX
+ * LabManagerDashboard.jsx - FIXED VERSION
  * =====================================================
+ * Changes:
+ * 1. Removed "Lab Analytics" section from dashboard
+ * 2. Only "My Labs" section remains with clickable lab names
+ * 3. Cleaned up unused labSummary state management
  */
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useDashboardStore } from "../../stores/dashboardStore";
 import { useEquipmentStore } from "../../stores/equipmentStore";
 import { useAlertStore } from "../../stores/alertStore";
@@ -28,9 +33,9 @@ import {
   Plus,
   Filter,
   Download,
-  BarChart2,
-  History,
   List,
+  History,
+  ExternalLink,
 } from "lucide-react";
 
 const DEPARTMENT_DISPLAY_NAMES = {
@@ -56,6 +61,7 @@ const getInstituteName = (institute) => {
 };
 
 export default function LabManagerDashboard() {
+  const navigate = useNavigate();
   const { user, checkAuth } = useAuthStore();
   const {
     overview,
@@ -71,17 +77,9 @@ export default function LabManagerDashboard() {
     isLoading: equipmentLoading,
   } = useEquipmentStore();
 
-  // STATE ISOLATION FIX: We only use the actions, not the 'alerts' state from the store
   const { fetchAlerts, resolveAlert } = useAlertStore();
 
-  const {
-    labs,
-    fetchLabs,
-    labSummary,
-    fetchLabSummary,
-    clearLabSummary,
-    isLoading: labLoading,
-  } = useLabStore();
+  const { labs, fetchLabs, isLoading: labLoading } = useLabStore();
 
   const {
     breakdownEquipment,
@@ -102,17 +100,13 @@ export default function LabManagerDashboard() {
   const [editingEquipment, setEditingEquipment] = useState(null);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
 
-  // --- NEW: ISOLATED STATE FOR ALERTS ---
-  const [alertTab, setAlertTab] = useState("active"); // 'active' | 'history'
-
-  // Separate buckets for data so they never overwrite each other
+  const [alertTab, setAlertTab] = useState("active");
   const [activeAlerts, setActiveAlerts] = useState([]);
   const [isActiveAlertsLoading, setIsActiveAlertsLoading] = useState(true);
-
   const [historyAlerts, setHistoryAlerts] = useState([]);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
 
-  // Ensure user profile (including institute) is fully loaded
+  // Ensure user profile is fully loaded
   useEffect(() => {
     const ensureUserDataLoaded = async () => {
       if (!user?.institute) {
@@ -136,10 +130,7 @@ export default function LabManagerDashboard() {
     }
   }, [isInitialLoad, user?.id]);
 
-  // --- ISOLATED FETCH FUNCTIONS ---
-
   const parseAlertResponse = (response) => {
-    // Handle potential response structures (array vs { data: [] })
     if (Array.isArray(response)) return response;
     if (response && response.data && Array.isArray(response.data))
       return response.data;
@@ -177,24 +168,19 @@ export default function LabManagerDashboard() {
         fetchOverview(),
         fetchEquipment(),
         fetchLabs(),
-        fetchActiveAlertsIsolated(), // Fetch active alerts into local state
+        fetchActiveAlertsIsolated(),
       ]);
-      clearLabSummary();
       console.log("✅ Dashboard data loaded successfully");
     } catch (error) {
       console.error("❌ Failed to load dashboard data:", error);
     }
   };
 
-  // --- HANDLERS ---
-
   const handleTabChange = (tab) => {
     setAlertTab(tab);
-    // Lazy load history if empty
     if (tab === "history" && historyAlerts.length === 0) {
       fetchHistoryAlertsIsolated();
     }
-    // Optional: Refresh active when switching back to active to ensure freshness
     if (tab === "active") {
       fetchActiveAlertsIsolated();
     }
@@ -204,12 +190,14 @@ export default function LabManagerDashboard() {
     if (labId === selectedLabId) {
       setSelectedLabId("all");
       fetchEquipment();
-      clearLabSummary();
     } else {
       setSelectedLabId(labId);
       fetchEquipment({ labId: labId });
-      fetchLabSummary(labId);
     }
+  };
+
+  const handleLabClick = (labId) => {
+    navigate(`/dashboard/lab-analytics/${labId}`);
   };
 
   const handleCreateEquipment = async (data) => {
@@ -268,22 +256,15 @@ export default function LabManagerDashboard() {
     try {
       const alert = activeAlerts.find((a) => a.id === alertId);
 
-      // 1️⃣ Special case: Breakdown alert → open modal instead of resolving immediately
       if (alert?.type === "EQUIPMENT_BREAKDOWN_CHECK") {
         setBreakdownAlertToRespond(alert);
         return;
       }
 
-      // 2️⃣ Normal resolve logic
       await resolveAlert(alertId);
-
-      // 3️⃣ Update Overview Stats
       fetchOverview();
-
-      // 4️⃣ Refresh Active Alerts
       await fetchActiveAlertsIsolated();
 
-      // 5️⃣ Refresh History Alerts (if user is on tab or history already loaded)
       if (historyAlerts.length > 0 || alertTab === "history") {
         fetchHistoryAlertsIsolated();
       }
@@ -355,7 +336,6 @@ export default function LabManagerDashboard() {
     downloadCSV(csv, `equipment-${new Date().toISOString().split("T")[0]}.csv`);
   };
 
-  // Show loading while initial data is being fetched
   if (isInitialLoad || dashboardLoading) {
     return (
       <div className="flex items-center justify-center h-96">
@@ -393,271 +373,292 @@ export default function LabManagerDashboard() {
   const filteredEquipment = getFilteredEquipment();
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">
-            Lab Manager Dashboard
-          </h1>
-          <p className="text-gray-600 mt-1">
-            {getInstituteName(user?.institute)} |{" "}
-            {DEPARTMENT_DISPLAY_NAMES[user?.department] ||
-              user?.department ||
-              "Unknown Department"}
-          </p>
-        </div>
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          <Plus className="w-5 h-5" />
-          Add Equipment
-        </button>
-      </div>
-
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {stats.map((stat, index) => (
-          <StatCard key={index} {...stat} />
-        ))}
-      </div>
-
-      {/* Filters and Search */}
-      <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-100">
-        <div className="flex items-center gap-2 mb-4">
-          <Filter className="w-5 h-5 text-gray-600" />
-          <h3 className="font-semibold text-gray-900">Filters</h3>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div className="h-screen overflow-hidden flex flex-col">
+      {/* Fixed Header */}
+      <div className="flex-shrink-0 bg-white border-b border-gray-100 px-6 py-3">
+        <div className="flex items-center justify-between">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Search Equipment
-            </label>
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by name, ID, model..."
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
+            <h1 className="text-xl font-bold text-gray-900">
+              Lab Manager Dashboard
+            </h1>
+            <p className="text-xs text-gray-600 mt-0.5">
+              {getInstituteName(user?.institute)} |{" "}
+              {DEPARTMENT_DISPLAY_NAMES[user?.department] ||
+                user?.department ||
+                "Unknown Department"}
+            </p>
           </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Status
-            </label>
-            <select
-              value={selectedStatus}
-              onChange={(e) => setSelectedStatus(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="all">All Status</option>
-              <option value="OPERATIONAL">Operational</option>
-              <option value="IN_USE">In Use</option>
-              <option value="IN_CLASS">In Class</option>
-              <option value="IDLE">Idle</option>
-              <option value="MAINTENANCE">Maintenance</option>
-              <option value="FAULTY">Faulty</option>
-              <option value="OFFLINE">Offline</option>
-              <option value="WARNING">Warning</option>
-            </select>
-          </div>
-        </div>
-
-        <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-200">
-          <p className="text-sm text-gray-600">
-            Showing {filteredEquipment.length} equipment
-          </p>
           <button
-            onClick={handleExportData}
-            className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            onClick={() => setIsModalOpen(true)}
+            className="flex items-center gap-2 px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
           >
-            <Download className="w-4 h-4" />
-            Export CSV
+            <Plus className="w-4 h-4" />
+            Add Equipment
           </button>
         </div>
       </div>
 
-      {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="space-y-6">
-          {/* My Labs List */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-100">
-            <div className="p-4 border-b border-gray-200">
-              <h3 className="font-semibold">My Labs</h3>
+      {/* Main Content */}
+      <div className="flex-1 overflow-hidden p-4">
+        <div className="h-full flex flex-col gap-3">
+          {/* Stats Cards */}
+          <div className="flex-shrink-0 grid grid-cols-4 gap-3">
+            {stats.map((stat, index) => (
+              <StatCard key={index} {...stat} />
+            ))}
+          </div>
+
+          {/* Filters */}
+          <div className="flex-shrink-0 bg-white rounded-lg shadow-sm p-3 border border-gray-100">
+            <div className="flex items-center gap-2 mb-2">
+              <Filter className="w-4 h-4 text-gray-600" />
+              <h3 className="text-sm font-semibold text-gray-900">Filters</h3>
             </div>
-            <div className="p-4 space-y-3 max-h-60 overflow-y-auto">
-              {labs.length === 0 ? (
-                <p className="text-sm text-gray-600 text-center py-4">
-                  No labs found for your department.
-                </p>
-              ) : (
-                labs.map((lab) => (
-                  <div
-                    key={lab.id}
-                    className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${
-                      selectedLabId === lab.labId
-                        ? "border-blue-500 bg-blue-50"
-                        : "border-gray-100 bg-gray-50 hover:bg-gray-100"
-                    }`}
-                    onClick={() => handleSelectLab(lab.labId)}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Building className="w-4 h-4 text-gray-600" />
-                        <h4 className="font-medium text-gray-900 text-sm">
-                          {lab.name}
-                        </h4>
-                      </div>
-                      <span className="text-sm font-bold text-blue-600">
-                        {lab._count?.equipments || 0} equip.
-                      </span>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Search Equipment
+                </label>
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search by name, ID, model..."
+                  className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Status
+                </label>
+                <select
+                  value={selectedStatus}
+                  onChange={(e) => setSelectedStatus(e.target.value)}
+                  className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="all">All Status</option>
+                  <option value="OPERATIONAL">Operational</option>
+                  <option value="IN_USE">In Use</option>
+                  <option value="IN_CLASS">In Class</option>
+                  <option value="IDLE">Idle</option>
+                  <option value="MAINTENANCE">Maintenance</option>
+                  <option value="FAULTY">Faulty</option>
+                  <option value="OFFLINE">Offline</option>
+                  <option value="WARNING">Warning</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-200">
+              <p className="text-xs text-gray-600">
+                Showing {filteredEquipment.length} equipment
+              </p>
+              <button
+                onClick={handleExportData}
+                className="flex items-center gap-1 px-2 py-1 text-xs text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                <Download className="w-3 h-3" />
+                Export CSV
+              </button>
+            </div>
+          </div>
+
+          {/* Main Content Grid */}
+          <div className="flex-1 overflow-hidden grid grid-cols-12 gap-3">
+            {/* Left Column - My Labs ONLY */}
+            <div className="col-span-3 overflow-hidden flex flex-col">
+              <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden flex flex-col">
+                <div className="flex-shrink-0 p-3 border-b border-gray-100">
+                  <h3 className="text-sm font-semibold">My Labs</h3>
+                </div>
+                <div className="flex-1 overflow-y-auto p-3 space-y-2">
+                  {labLoading ? (
+                    <div className="flex justify-center py-4">
+                      <LoadingSpinner />
                     </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-
-          {/* Lab Analytics (Full Original UI) */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-6">
-            <h2 className="text-xl font-semibold mb-4">Lab Analytics</h2>
-            {labLoading ? (
-              <LoadingSpinner />
-            ) : labSummary ? (
-              <div className="space-y-3">
-                <h3 className="font-bold text-lg text-blue-900">
-                  {labSummary.lab.name}
-                </h3>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium text-gray-600">
-                    Total Equipment
-                  </span>
-                  <span className="font-bold text-lg">
-                    {labSummary.statistics.totalEquipment}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium text-gray-600">
-                    Avg. Health Score
-                  </span>
-                  <span className="font-bold text-lg text-green-600">
-                    {labSummary.statistics.avgHealthScore.toFixed(0)}%
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium text-gray-600">
-                    Total Uptime
-                  </span>
-                  <span className="font-bold text-lg">
-                    {labSummary.statistics.totalUptime.toFixed(1)} hrs
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium text-gray-600">
-                    Total Downtime
-                  </span>
-                  <span className="font-bold text-lg text-red-600">
-                    {labSummary.statistics.totalDowntime.toFixed(1)} hrs
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium text-gray-600">
-                    Equipment In Class
-                  </span>
-                  <span className="font-bold text-lg">
-                    {labSummary.statistics.inClassEquipment}
-                  </span>
-                </div>
-              </div>
-            ) : (
-              <div className="text-center py-10 text-gray-500">
-                <BarChart2 className="w-12 h-12 mx-auto text-gray-300 mb-2" />
-                <p>Select a lab to view its summary</p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="lg:col-span-2">
-          {/* Equipment Table */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-100">
-            <div className="p-4 border-b border-gray-200">
-              <h2 className="text-xl font-semibold">
-                Equipment{" "}
-                {selectedLabId !== "all"
-                  ? `(Lab: ${
-                      labs.find((l) => l.labId === selectedLabId)?.name
-                    })`
-                  : "(All Labs)"}
-              </h2>
-            </div>
-            <div className="p-4">
-              {equipmentLoading ? (
-                <div className="flex justify-center py-12">
-                  <LoadingSpinner />
-                </div>
-              ) : filteredEquipment.length === 0 ? (
-                <div className="text-center py-12">
-                  <Activity className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-                  <p className="text-gray-600">No equipment found</p>
-                  {selectedLabId === "all" && (
-                    <button
-                      onClick={() => setIsModalOpen(true)}
-                      className="mt-4 text-blue-600 hover:text-blue-700 font-medium"
-                    >
-                      Add your first equipment
-                    </button>
+                  ) : labs.length === 0 ? (
+                    <p className="text-xs text-gray-600 text-center py-4">
+                      No labs found for your department.
+                    </p>
+                  ) : (
+                    labs.map((lab) => (
+                      <div
+                        key={lab.id}
+                        className={`p-2 rounded-lg border-2 transition-all ${
+                          selectedLabId === lab.labId
+                            ? "border-blue-500 bg-blue-50"
+                            : "border-gray-100 bg-gray-50 hover:bg-gray-100"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1.5">
+                          <button
+                            onClick={() => handleLabClick(lab.labId)}
+                            className="flex items-center gap-1.5 hover:text-blue-600 transition-colors cursor-pointer group"
+                          >
+                            <Building className="w-3.5 h-3.5 text-gray-600 group-hover:text-blue-600" />
+                            <h4 className="font-medium text-gray-900 text-xs group-hover:underline group-hover:text-blue-600">
+                              {lab.name}
+                            </h4>
+                            <ExternalLink className="w-3 h-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                          </button>
+                          <span className="text-xs font-bold text-blue-600">
+                            {lab._count?.equipments || 0}
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => handleSelectLab(lab.labId)}
+                          className="text-xs text-gray-600 hover:text-gray-800 flex items-center gap-1"
+                        >
+                          {selectedLabId === lab.labId
+                            ? "Clear Filter"
+                            : "Filter Equipment"}
+                        </button>
+                      </div>
+                    ))
                   )}
                 </div>
-              ) : (
-                <EquipmentTable
-                  equipment={filteredEquipment}
-                  onEdit={handleEditClick}
-                  onDelete={handleDeleteEquipment}
-                  showActions={true}
-                />
-              )}
+              </div>
+            </div>
+
+            {/* Right Column - Equipment + Breakdown + Alerts */}
+            <div className="col-span-9 space-y-3 overflow-hidden flex flex-col">
+              {/* Equipment Table */}
+              <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden flex flex-col">
+                <div className="flex-shrink-0 p-3 border-b border-gray-100">
+                  <h2 className="text-sm font-semibold">
+                    Equipment{" "}
+                    {selectedLabId !== "all"
+                      ? `(Lab: ${
+                          labs.find((l) => l.labId === selectedLabId)?.name
+                        })`
+                      : "(All Labs)"}
+                  </h2>
+                </div>
+                <div className="flex-1 overflow-y-auto p-3">
+                  {equipmentLoading ? (
+                    <div className="flex justify-center py-8">
+                      <LoadingSpinner />
+                    </div>
+                  ) : filteredEquipment.length === 0 ? (
+                    <div className="text-center py-8">
+                      <Activity className="w-10 h-10 text-gray-400 mx-auto mb-2" />
+                      <p className="text-sm text-gray-600">
+                        No equipment found
+                      </p>
+                      {selectedLabId === "all" && (
+                        <button
+                          onClick={() => setIsModalOpen(true)}
+                          className="mt-3 text-sm text-blue-600 hover:text-blue-700 font-medium"
+                        >
+                          Add your first equipment
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <EquipmentTable
+                      equipment={filteredEquipment}
+                      onEdit={handleEditClick}
+                      onDelete={handleDeleteEquipment}
+                      showActions={true}
+                    />
+                  )}
+                </div>
+              </div>
+
+              {/* Bottom Row - Breakdown + Alerts */}
+              <div className="flex-shrink-0 grid grid-cols-2 gap-3 h-64">
+                {/* Breakdown Equipment */}
+                <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden flex flex-col">
+                  <div className="flex-shrink-0 p-3 border-b border-gray-100 flex items-center justify-between">
+                    <h2 className="text-sm font-semibold flex items-center gap-1.5">
+                      <AlertTriangle className="w-4 h-4 text-red-600" />
+                      Breakdown ({breakdownEquipment.length})
+                    </h2>
+                    <button
+                      onClick={() => setIsAddBreakdownModalOpen(true)}
+                      className="px-2 py-1 text-xs bg-red-600 text-white rounded-lg hover:bg-red-700"
+                    >
+                      Report
+                    </button>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto p-3">
+                    {breakdownEquipment.length === 0 ? (
+                      <p className="text-xs text-gray-600 text-center py-4">
+                        No breakdowns reported yet.
+                      </p>
+                    ) : (
+                      <BreakdownEquipmentTable
+                        breakdowns={breakdownEquipment}
+                        onReorder={async (id, data) => {
+                          await submitReorderRequest(id, data);
+                          await fetchBreakdownEquipment();
+                        }}
+                        onResolve={async (id) => {
+                          await resolveBreakdown(id);
+                          await fetchBreakdownEquipment();
+                        }}
+                      />
+                    )}
+                  </div>
+                </div>
+
+                {/* Alerts Section */}
+                <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden flex flex-col">
+                  <div className="flex-shrink-0 p-3 border-b border-gray-100 flex items-center justify-between">
+                    <h2 className="text-sm font-semibold">Alerts</h2>
+
+                    <div className="flex items-center bg-gray-100 rounded-lg p-0.5">
+                      <button
+                        onClick={() => handleTabChange("active")}
+                        className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-all ${
+                          alertTab === "active"
+                            ? "bg-white text-blue-600 shadow-sm"
+                            : "text-gray-600 hover:text-gray-900"
+                        }`}
+                      >
+                        <List className="w-3 h-3" />
+                        Active
+                      </button>
+                      <button
+                        onClick={() => handleTabChange("history")}
+                        className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-all ${
+                          alertTab === "history"
+                            ? "bg-white text-blue-600 shadow-sm"
+                            : "text-gray-600 hover:text-gray-900"
+                        }`}
+                      >
+                        <History className="w-3 h-3" />
+                        History
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto p-3">
+                    {alertTab === "active" ? (
+                      isActiveAlertsLoading ? (
+                        <div className="flex justify-center py-6">
+                          <LoadingSpinner />
+                        </div>
+                      ) : (
+                        <AlertsList
+                          alerts={activeAlerts}
+                          onResolve={handleResolveAlert}
+                        />
+                      )
+                    ) : (
+                      <AlertHistoryTable
+                        alerts={historyAlerts}
+                        loading={isHistoryLoading}
+                      />
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      </div>
-
-      {/* Breakdown Equipment Section */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-100">
-        <div className="p-4 border-b border-gray-200 flex items-center justify-between">
-          <h2 className="text-xl font-semibold flex items-center gap-2">
-            <AlertTriangle className="w-5 h-5 text-red-600" />
-            Breakdown Equipment ({breakdownEquipment.length})
-          </h2>
-          <button
-            onClick={() => setIsAddBreakdownModalOpen(true)}
-            className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700"
-          >
-            Report Breakdown
-          </button>
-        </div>
-
-        <div className="p-6">
-          {breakdownEquipment.length === 0 ? (
-            <p className="text-gray-600 text-center py-6">
-              No breakdowns reported yet.
-            </p>
-          ) : (
-            <BreakdownEquipmentTable
-              breakdowns={breakdownEquipment}
-              onReorder={async (id, data) => {
-                await submitReorderRequest(id, data);
-                await fetchBreakdownEquipment();
-              }}
-              onResolve={async (id) => {
-                await resolveBreakdown(id);
-                await fetchBreakdownEquipment();
-              }}
-            />
-          )}
         </div>
       </div>
 
@@ -689,62 +690,6 @@ export default function LabManagerDashboard() {
         />
       )}
 
-      {/* Alerts Section (With Tab Logic and Isolated State) */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-100">
-        <div className="p-4 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <h2 className="text-xl font-semibold">Alerts</h2>
-
-          {/* Tab Switcher */}
-          <div className="flex items-center bg-gray-100 rounded-lg p-1">
-            <button
-              onClick={() => handleTabChange("active")}
-              className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
-                alertTab === "active"
-                  ? "bg-white text-blue-600 shadow-sm"
-                  : "text-gray-600 hover:text-gray-900"
-              }`}
-            >
-              <List className="w-4 h-4" />
-              Active Alerts
-            </button>
-            <button
-              onClick={() => handleTabChange("history")}
-              className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
-                alertTab === "history"
-                  ? "bg-white text-blue-600 shadow-sm"
-                  : "text-gray-600 hover:text-gray-900"
-              }`}
-            >
-              <History className="w-4 h-4" />
-              Alert History
-            </button>
-          </div>
-        </div>
-
-        <div className="p-6">
-          {alertTab === "active" ? (
-            // Active Alerts View (Uses Isolated Local State)
-            isActiveAlertsLoading ? (
-              <div className="flex justify-center py-8">
-                <LoadingSpinner />
-              </div>
-            ) : (
-              <AlertsList
-                alerts={activeAlerts}
-                onResolve={handleResolveAlert}
-              />
-            )
-          ) : (
-            // History View (Uses Isolated Local State)
-            <AlertHistoryTable
-              alerts={historyAlerts}
-              loading={isHistoryLoading}
-            />
-          )}
-        </div>
-      </div>
-
-      {/* Modal */}
       {isModalOpen && (
         <EquipmentFormModal
           isOpen={isModalOpen}

@@ -10,15 +10,15 @@ const asyncHandler = (fn) => (req, res, next) => {
  * Maps department to its corresponding equipment name field in the schema
  */
 const DEPARTMENT_TO_FIELD_MAP = {
-  FITTER_MANUFACTURING: 'fitterEquipmentName',
-  ELECTRICAL_ENGINEERING: 'electricalEquipmentName',
-  WELDING_FABRICATION: 'weldingEquipmentName',
-  TOOL_DIE_MAKING: 'toolDieEquipmentName',
-  ADDITIVE_MANUFACTURING: 'additiveManufacturingEquipmentName',
-  SOLAR_INSTALLER_PV: 'solarInstallerEquipmentName',
-  MATERIAL_TESTING_QUALITY: 'materialTestingEquipmentName',
-  ADVANCED_MANUFACTURING_CNC: 'advancedManufacturingEquipmentName',
-  AUTOMOTIVE_MECHANIC: 'automotiveEquipmentName',
+  FITTER_MANUFACTURING: "fitterEquipmentName",
+  ELECTRICAL_ENGINEERING: "electricalEquipmentName",
+  WELDING_FABRICATION: "weldingEquipmentName",
+  TOOL_DIE_MAKING: "toolDieEquipmentName",
+  ADDITIVE_MANUFACTURING: "additiveManufacturingEquipmentName",
+  SOLAR_INSTALLER_PV: "solarInstallerEquipmentName",
+  MATERIAL_TESTING_QUALITY: "materialTestingEquipmentName",
+  ADVANCED_MANUFACTURING_CNC: "advancedManufacturingEquipmentName",
+  AUTOMOTIVE_MECHANIC: "automotiveEquipmentName",
 };
 
 /**
@@ -37,7 +37,7 @@ const buildDepartmentField = (department, equipmentName) => {
  */
 const clearAllDepartmentFields = () => {
   const clearFields = {};
-  Object.values(DEPARTMENT_TO_FIELD_MAP).forEach(field => {
+  Object.values(DEPARTMENT_TO_FIELD_MAP).forEach((field) => {
     clearFields[field] = null;
   });
   return clearFields;
@@ -45,105 +45,103 @@ const clearAllDepartmentFields = () => {
 
 class EquipmentController {
   // Get all equipment
-// FIXED getAllEquipment method - Replace lines 44-119 in equipment.controller.js
+  getAllEquipment = asyncHandler(async (req, res) => {
+    const {
+      page = 1,
+      limit = 10,
+      department,
+      status,
+      institute,
+      labId,
+      search,
+    } = req.query;
+    const skip = (page - 1) * limit;
 
-getAllEquipment = asyncHandler(async (req, res) => {
-  const {
-    page = 1,
-    limit = 10,
-    department,
-    status,
-    institute,
-    labId,
-    search,
-  } = req.query;
-  const skip = (page - 1) * limit;
+    // Get the base filter from RBAC
+    const roleFilter = filterDataByRole(req);
 
-  // Get the base filter from RBAC
-  const roleFilter = filterDataByRole(req);
+    // Build where clause for equipment
+    const where = {
+      ...roleFilter,
+      // FIXED: Removed invalid { labId: { not: null } } check.
+      // If labId is required in schema, this check is invalid. If optional, omit it to get all.
+      ...(department && { department }),
+      ...(search && {
+        OR: [
+          { name: { contains: search, mode: "insensitive" } },
+          { equipmentId: { contains: search, mode: "insensitive" } },
+          { manufacturer: { contains: search, mode: "insensitive" } },
+        ],
+      }),
+      isActive: true,
+    };
 
-  // Build where clause for equipment
-  const where = {
-    ...roleFilter,
-    ...(roleFilter?.labId ? {} : { labId: { not: null } }),
-    ...(department && { department }),
-    ...(search && {
-      OR: [
-        { name: { contains: search, mode: "insensitive" } },
-        { equipmentId: { contains: search, mode: "insensitive" } },
-        { manufacturer: { contains: search, mode: "insensitive" } },
-      ],
-    }),
-    isActive: true,
-  };
-
-  // Add lab filter if provided
-  if (labId && req.user.role !== "TRAINER") {
-    const lab = await prisma.lab.findUnique({ where: { labId } });
-    if (lab) {
-      where.labId = lab.id;
+    // Add lab filter if provided
+    if (labId && req.user.role !== "TRAINER") {
+      const lab = await prisma.lab.findUnique({ where: { labId } });
+      if (lab) {
+        where.labId = lab.id;
+      }
     }
-  }
 
-  // Add institute filter
-  if (req.user.role !== "TRAINER" && institute) {
-    where.lab = { 
-      ...(where.lab || {}), 
-      institute 
-    };
-  }
+    // Add institute filter
+    if (req.user.role !== "TRAINER" && institute) {
+      where.lab = {
+        ...(where.lab || {}),
+        institute,
+      };
+    }
 
-  // ✅ FIXED: Filter by status through the relation
-  if (status) {
-    where.status = {
-      status: status  // Filter the related status record
-    };
-  }
+    // Filter by status through the relation
+    if (status) {
+      where.status = {
+        status: status,
+      };
+    }
 
-  try {
-    const [equipment, total] = await Promise.all([
-      prisma.equipment.findMany({
-        where,
-        include: {
-          status: true,  // Include all status data
-          lab: { 
-            select: { 
-              labId: true,
-              name: true, 
-              institute: true,
-              department: true,
-            } 
-          },
-          _count: {
-            select: {
-              alerts: { where: { isResolved: false } },
-              maintenanceLogs: true,
+    try {
+      const [equipment, total] = await Promise.all([
+        prisma.equipment.findMany({
+          where,
+          include: {
+            status: true,
+            lab: {
+              select: {
+                labId: true,
+                name: true,
+                institute: true,
+                department: true,
+              },
+            },
+            _count: {
+              select: {
+                alerts: { where: { isResolved: false } },
+                maintenanceLogs: true,
+              },
             },
           },
+          skip: parseInt(skip),
+          take: parseInt(limit),
+          orderBy: { createdAt: "desc" },
+        }),
+        prisma.equipment.count({ where }),
+      ]);
+
+      res.json({
+        success: true,
+        data: equipment,
+        pagination: {
+          total,
+          page: parseInt(page),
+          limit: parseInt(limit),
+          totalPages: Math.ceil(total / limit),
         },
-        skip: parseInt(skip),
-        take: parseInt(limit),
-        orderBy: { createdAt: "desc" },
-      }),
-      prisma.equipment.count({ where }),
-    ]);
-
-    res.json({
-      success: true,
-      data: equipment,
-      pagination: {
-        total,
-        page: parseInt(page),
-        limit: parseInt(limit),
-        totalPages: Math.ceil(total / limit),
-      },
-    });
-  } catch (error) {
-    logger.error('Error in getAllEquipment:', error);
-    throw error;
-  }
-});
-
+      });
+    } catch (error) {
+      logger.error("Error in getAllEquipment:", error);
+      throw error;
+    }
+  });
 
   // Get equipment by ID
   getEquipmentById = asyncHandler(async (req, res) => {
@@ -154,13 +152,13 @@ getAllEquipment = asyncHandler(async (req, res) => {
       where: { id, ...roleFilter, isActive: true },
       include: {
         status: true,
-        lab: { 
-          select: { 
-            labId: true,  // Public labId
-            name: true, 
+        lab: {
+          select: {
+            labId: true, // Public labId
+            name: true,
             institute: true,
             department: true,
-          } 
+          },
         },
         alerts: {
           where: { isResolved: false },
@@ -231,20 +229,20 @@ getAllEquipment = asyncHandler(async (req, res) => {
 
     // Validate and translate labId
     if (!labId) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "labId is required." 
+      return res.status(400).json({
+        success: false,
+        message: "labId is required.",
       });
     }
 
-    const lab = await prisma.lab.findUnique({ 
-      where: { labId: labId.trim() } 
+    const lab = await prisma.lab.findUnique({
+      where: { labId: labId.trim() },
     });
 
     if (!lab) {
-      return res.status(400).json({ 
-        success: false, 
-        message: `Invalid Lab ID provided: "${labId}". Please check and try again.` 
+      return res.status(400).json({
+        success: false,
+        message: `Invalid Lab ID provided: "${labId}". Please check and try again.`,
       });
     }
 
@@ -256,7 +254,7 @@ getAllEquipment = asyncHandler(async (req, res) => {
           message: "You can only add equipment to your own institute.",
         });
       }
-      
+
       // LAB_MANAGER can only add to their department
       if (lab.department !== req.user.department) {
         return res.status(403).json({
@@ -325,13 +323,13 @@ getAllEquipment = asyncHandler(async (req, res) => {
   // Update equipment
   updateEquipment = asyncHandler(async (req, res) => {
     const { id } = req.params;
-    const { 
-      department, 
-      equipmentName, 
-      labId, 
+    const {
+      department,
+      equipmentName,
+      labId,
       purchaseDate,
       warrantyExpiry,
-      ...updateData 
+      ...updateData
     } = req.body;
 
     // Remove fields that shouldn't be updated
@@ -358,32 +356,35 @@ getAllEquipment = asyncHandler(async (req, res) => {
     if (department && department !== existingEquipment.department) {
       // Clear all department-specific fields first
       Object.assign(updateData, clearAllDepartmentFields());
-      
+
       // Set new department
       updateData.department = department;
-      
+
       // Set new department-specific equipment name if provided
       if (equipmentName) {
-        Object.assign(updateData, buildDepartmentField(department, equipmentName));
+        Object.assign(
+          updateData,
+          buildDepartmentField(department, equipmentName)
+        );
       }
     } else if (equipmentName) {
       // Just updating equipment name for same department
       Object.assign(
-        updateData, 
+        updateData,
         buildDepartmentField(existingEquipment.department, equipmentName)
       );
     }
 
     // Handle lab change
     if (labId && labId !== existingEquipment.lab.labId) {
-      const newLab = await prisma.lab.findUnique({ 
-        where: { labId: labId.trim() } 
+      const newLab = await prisma.lab.findUnique({
+        where: { labId: labId.trim() },
       });
 
       if (!newLab) {
-        return res.status(400).json({ 
-          success: false, 
-          message: `Invalid Lab ID: "${labId}".` 
+        return res.status(400).json({
+          success: false,
+          message: `Invalid Lab ID: "${labId}".`,
         });
       }
 
@@ -395,7 +396,7 @@ getAllEquipment = asyncHandler(async (req, res) => {
             message: "You can only move equipment within your own institute.",
           });
         }
-        
+
         if (newLab.department !== req.user.department) {
           return res.status(403).json({
             success: false,
@@ -405,7 +406,8 @@ getAllEquipment = asyncHandler(async (req, res) => {
       }
 
       // Validate department matches new lab
-      const targetDepartment = updateData.department || existingEquipment.department;
+      const targetDepartment =
+        updateData.department || existingEquipment.department;
       if (targetDepartment !== newLab.department) {
         return res.status(400).json({
           success: false,
@@ -441,7 +443,9 @@ getAllEquipment = asyncHandler(async (req, res) => {
       },
     });
 
-    logger.info(`Equipment updated: ${equipment.equipmentId} by ${req.user.email}`);
+    logger.info(
+      `Equipment updated: ${equipment.equipmentId} by ${req.user.email}`
+    );
     res.json({
       success: true,
       message: "Equipment updated successfully.",
@@ -472,7 +476,9 @@ getAllEquipment = asyncHandler(async (req, res) => {
       data: { isActive: false },
     });
 
-    logger.info(`Equipment deleted: ${equipment.equipmentId} by ${req.user.email}`);
+    logger.info(
+      `Equipment deleted: ${equipment.equipmentId} by ${req.user.email}`
+    );
     res.json({
       success: true,
       message: "Equipment deleted successfully.",
@@ -483,25 +489,24 @@ getAllEquipment = asyncHandler(async (req, res) => {
   getEquipmentStats = asyncHandler(async (req, res) => {
     const roleFilter = filterDataByRole(req);
 
-    // Build where clause for stats - FIXED: Same fix as getAllEquipment
+    // Build where clause for stats
     const statsWhere = {
       ...roleFilter,
-      // Only add "not null" check if roleFilter doesn't have a specific labId
-     ...(roleFilter?.labId ? {} : { labId: { not: null } }),
+      // FIXED: Removed the invalid { labId: { not: null } } check here as well
       isActive: true,
     };
 
     const [total, byStatus, byDepartment, criticalAlerts] = await Promise.all([
       // Total equipment count
-      prisma.equipment.count({ 
-        where: statsWhere
+      prisma.equipment.count({
+        where: statsWhere,
       }),
 
       // Count by status
       prisma.equipmentStatus.groupBy({
         by: ["status"],
-        where: { 
-          equipment: statsWhere
+        where: {
+          equipment: statsWhere,
         },
         _count: true,
       }),
