@@ -3,6 +3,7 @@ import { useDashboardStore } from "../../stores/dashboardStore";
 import { useEquipmentStore } from "../../stores/equipmentStore";
 import { useAlertStore } from "../../stores/alertStore";
 import { useAuthStore } from "../../stores/authStore";
+import api from "../../lib/axios";
 import EquipmentTable from "../../components/dashboard/EquipmentTable";
 import AlertsList from "../../components/dashboard/AlertsList";
 import LoadingSpinner from "../../components/common/LoadingSpinner";
@@ -236,7 +237,7 @@ export default function TrainerDashboard() {
     fetchEquipment,
     isLoading: equipmentLoading,
   } = useEquipmentStore();
-  const { alerts, fetchAlerts, resolveAlert } = useAlertStore();
+  const { alerts, fetchAlerts, resolveAlert, isLoading: alertsLoading } = useAlertStore();
 
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedStatus, setSelectedStatus] = useState("all");
@@ -248,13 +249,32 @@ export default function TrainerDashboard() {
     loadDashboardData();
   }, []);
 
+  useEffect(() => {
+    console.log('🔍 Alerts state updated:', alerts);
+  }, [alerts]);
+
+  useEffect(() => {
+    // Fetch alerts immediately on mount as a separate call
+    const fetchInitialAlerts = async () => {
+      try {
+        console.log('🔔 Fetching initial alerts separately...');
+        await fetchAlerts({ isResolved: false });
+      } catch (error) {
+        console.error('❌ Failed to fetch initial alerts:', error);
+      }
+    };
+    
+    fetchInitialAlerts();
+  }, [fetchAlerts]);
+
   const loadDashboardData = async () => {
     try {
-      await Promise.all([
+      console.log('🚀 Loading dashboard data...');
+      const results = await Promise.all([
         fetchOverview(),
         fetchEquipment(),
-        fetchAlerts({ isResolved: false }),
       ]);
+      console.log('✅ Dashboard data loaded');
     } catch (error) {
       console.error("Failed to load dashboard data:", error);
     }
@@ -262,16 +282,43 @@ export default function TrainerDashboard() {
 
   const handleTabChange = async (tab) => {
     setAlertTab(tab);
-    if (tab === "history" && historyAlerts.length === 0) {
-      setIsHistoryLoading(true);
-      try {
-        const res = await fetchAlerts({ isResolved: true, limit: 20 });
-        setHistoryAlerts(Array.isArray(res) ? res : res.data || []);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setIsHistoryLoading(false);
+    
+    if (tab === "history") {
+      // Fetch history alerts when switching to history tab
+      if (historyAlerts.length === 0) {
+        setIsHistoryLoading(true);
+        try {
+          // Fetch history alerts directly via API without updating store
+          console.log('📜 Fetching history alerts directly...');
+          const response = await api.get("/alerts", { 
+            params: { isResolved: true, limit: 20 } 
+          });
+          console.log('✅ History alerts fetched:', response.data.data);
+          setHistoryAlerts(response.data.data || []);
+        } catch (err) {
+          console.error("Error fetching history alerts:", err);
+        } finally {
+          setIsHistoryLoading(false);
+        }
       }
+    } else if (tab === "active") {
+      // Re-fetch active alerts when switching back to active tab
+      try {
+        console.log('🔄 Switching back to active tab, refetching active alerts...');
+        await fetchAlerts({ isResolved: false });
+      } catch (err) {
+        console.error("Error fetching active alerts:", err);
+      }
+    }
+  };
+
+  const handleResolveAlert = async (alertId) => {
+    try {
+      await resolveAlert(alertId);
+      // The store will automatically update the alerts array
+      // No need to manually filter or refetch
+    } catch (error) {
+      console.error("Failed to resolve alert:", error);
     }
   };
 
@@ -522,11 +569,16 @@ export default function TrainerDashboard() {
             <div className="flex items-center gap-2">
               <div className="relative p-1.5 bg-red-100 text-red-600 rounded-lg">
                 <FaExclamationTriangle className="w-4 h-4" />
-                {alerts.length > 0 && (
+                {alerts && alerts.length > 0 && (
                   <span className="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full border border-white" />
                 )}
               </div>
-              <h2 className="text-sm font-bold text-gray-800">Alerts</h2>
+              <div>
+                <h2 className="text-sm font-bold text-gray-800">Alerts</h2>
+                <p className="text-[10px] text-gray-500">
+                  {alertTab === "active" ? `${alerts?.length || 0} active` : `${historyAlerts?.length || 0} resolved`}
+                </p>
+              </div>
             </div>
             
             <div className="flex bg-gray-100 p-0.5 rounded-lg">
@@ -555,11 +607,27 @@ export default function TrainerDashboard() {
 
           <div className="flex-1 overflow-y-auto p-0">
             {alertTab === "active" ? (
-              <AlertsList
-                alerts={alerts}
-                onResolve={resolveAlert}
-                compact={true}
-              />
+              alertsLoading ? (
+                <div className="flex justify-center py-4">
+                  <LoadingSpinner size="sm" />
+                </div>
+              ) : alerts && alerts.length > 0 ? (
+                <AlertsList
+                  alerts={alerts}
+                  onResolve={handleResolveAlert}
+                  compact={true}
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center py-8 px-4">
+                  <div className="p-3 bg-green-100 rounded-full mb-3">
+                    <FaCheckCircle className="w-6 h-6 text-green-600" />
+                  </div>
+                  <p className="text-sm font-medium text-gray-700">All Clear!</p>
+                  <p className="text-xs text-gray-500 text-center mt-1">
+                    No active alerts at the moment
+                  </p>
+                </div>
+              )
             ) : (
               <CompactHistoryList
                 alerts={historyAlerts}

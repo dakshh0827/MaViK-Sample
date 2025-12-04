@@ -424,8 +424,8 @@ export default function PolicyMakerDashboard() {
         await Promise.allSettled([
           fetchOverview(),
           fetchActiveAlertsIsolated(),
-          fetchInstitutes(),
-          fetchLabs(),
+          fetchInstitutes(true),
+          fetchLabs({}, true),
           fetchReorderRequests(),
         ]);
         fetchFilteredCounts("all", "all");

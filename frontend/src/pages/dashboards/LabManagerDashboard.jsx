@@ -284,17 +284,17 @@ export default function LabManagerDashboard() {
   };
 
   const loadDashboardData = async () => {
-    try {
-      await Promise.all([
-        fetchOverview(),
-        fetchEquipment(),
-        fetchLabs(),
-        fetchActiveAlertsIsolated(),
-      ]);
-    } catch (error) {
-      console.error("❌ Failed to load dashboard data:", error);
-    }
-  };
+  try {
+    await Promise.all([
+      fetchOverview(),
+      fetchEquipment(),
+      fetchLabs({}, true), // ← ADD true HERE to force refresh
+      fetchActiveAlertsIsolated(),
+    ]);
+  } catch (error) {
+    console.error("❌ Failed to load dashboard data:", error);
+  }
+};
 
   const handleTabChange = (tab) => {
     setAlertTab(tab);
