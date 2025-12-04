@@ -62,9 +62,20 @@ export default function SignupPage() {
     fetchInstitutes();
   }, [fetchInstitutes]);
 
-  const handleChange = (e) => {
+const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData({ ...formData, [name]: value });
+    
+    // FIXED: Don't trim or modify email while typing
+    // Only trim whitespace, preserve dots and other characters
+    let processedValue = value;
+    
+    if (name === 'email') {
+      // Only trim leading/trailing whitespace, keep dots and special chars
+      processedValue = value.trim();
+      console.log('Email input:', processedValue); // Debug log
+    }
+    
+    setFormData({ ...formData, [name]: processedValue });
 
     // Clear error when user starts typing
     if (error) setError("");
@@ -73,6 +84,16 @@ export default function SignupPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
+
+    // FIXED: Email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(formData.email)) {
+      setError("Please enter a valid email address");
+      return;
+    }
+
+    // Log email before sending
+    console.log('Submitting email:', formData.email);
 
     // Basic validation
     if (formData.password !== formData.confirmPassword) {
@@ -85,7 +106,7 @@ export default function SignupPage() {
       return;
     }
 
-    // UPDATED: Role-specific validation - both roles now require all three fields
+    // Role-specific validation
     if (formData.role === "LAB_MANAGER" || formData.role === "TRAINER") {
       if (!formData.instituteId) {
         setError("Institute is required for this role");
@@ -104,24 +125,24 @@ export default function SignupPage() {
     setIsLoading(true);
 
     try {
-      // Destructure to remove frontend-only fields
       const { confirmPassword, ...registerData } = formData;
 
-      // Clean up data based on role to match backend expectations
+      // Clean up data based on role
       const cleanData = { ...registerData };
 
       if (formData.role === "POLICY_MAKER") {
-        // Policy makers don't need institute, department, or labId
         delete cleanData.instituteId;
         delete cleanData.department;
         delete cleanData.labId;
       }
-      // No fields deleted for Trainer or Lab Manager - both now send all fields
+
+      // Log the data being sent
+      console.log('Registration data:', cleanData);
 
       await register(cleanData);
-      // Navigate to verify-email page, passing email in state
       navigate("/verify-email", { state: { email: formData.email } });
     } catch (err) {
+      console.error('Registration error:', err);
       setError(
         err.message ||
           err.errors?.[0]?.msg ||

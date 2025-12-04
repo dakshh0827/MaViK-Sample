@@ -12,8 +12,6 @@ export const USER_ROLES = Object.values(USER_ROLE_ENUM);
 
 export const AUTH_PROVIDER_ENUM = {
   CREDENTIAL: "CREDENTIAL",
-  GOOGLE: "GOOGLE",
-  GITHUB: "GITHUB",
 };
 
 export const OTP_PURPOSE_ENUM = {

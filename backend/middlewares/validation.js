@@ -21,7 +21,8 @@ const handleValidationErrors = (req, res, next) => {
 export const registerValidation = [
   body("email")
     .isEmail()
-    .normalizeEmail()
+    // ✅ FIXED: Prevent removing dots from Gmail addresses
+    .normalizeEmail({ gmail_remove_dots: false }) 
     .withMessage("Please provide a valid email address"),
   body("password")
     .isLength({ min: 8 })
@@ -67,7 +68,8 @@ export const registerValidation = [
 export const loginValidation = [
   body("email")
     .isEmail()
-    .normalizeEmail()
+    // ✅ FIXED: Ensure login matches the registered email exactly
+    .normalizeEmail({ gmail_remove_dots: false })
     .withMessage("Please provide a valid email address"),
   body("password").notEmpty().withMessage("Password is required"),
   handleValidationErrors,
@@ -76,7 +78,8 @@ export const loginValidation = [
 export const verifyOTPValidation = [
   body("email")
     .isEmail()
-    .normalizeEmail()
+    // ✅ FIXED
+    .normalizeEmail({ gmail_remove_dots: false })
     .withMessage("Please provide a valid email address"),
   body("otp")
     .isLength({ min: 6, max: 6 })
@@ -92,7 +95,8 @@ export const verifyOTPValidation = [
 export const resendOTPValidation = [
   body("email")
     .isEmail()
-    .normalizeEmail()
+    // ✅ FIXED
+    .normalizeEmail({ gmail_remove_dots: false })
     .withMessage("Please provide a valid email address"),
   body("purpose")
     .optional()
@@ -120,7 +124,8 @@ export const changePasswordValidation = [
 export const createUserValidation = [
   body("email")
     .isEmail()
-    .normalizeEmail()
+    // ✅ FIXED
+    .normalizeEmail({ gmail_remove_dots: false })
     .withMessage("Please provide a valid email address"),
   body("password")
     .isLength({ min: 8 })
@@ -160,7 +165,8 @@ export const updateUserValidation = [
   body("email")
     .optional()
     .isEmail()
-    .normalizeEmail()
+    // ✅ FIXED
+    .normalizeEmail({ gmail_remove_dots: false })
     .withMessage("Please provide a valid email address"),
   body("firstName")
     .optional()
@@ -203,6 +209,7 @@ export const updateUserValidation = [
 ];
 
 // --- Equipment Validation ---
+// (No changes needed below here, but included for completeness)
 
 export const equipmentValidation = [
   body("equipmentId").notEmpty().withMessage("Equipment ID is required"),

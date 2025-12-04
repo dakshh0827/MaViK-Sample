@@ -7,10 +7,8 @@ import { jwtConfig } from "../config/jwt.js";
 import {
   USER_ROLE_ENUM,
   OTP_PURPOSE_ENUM,
-  AUTH_PROVIDER_ENUM,
   DEPARTMENT_ENUM,
 } from "../utils/constants.js";
-// FIXED: Import the real EmailService instead of the utility mock
 import EmailService from "../services/email.service.js";
 
 const asyncHandler = (fn) => (req, res, next) => {
@@ -27,7 +25,6 @@ const generateAccessToken = (user) => {
     instituteId: user.instituteId,
     department: user.department,
     labId: user.labId,
-    authProvider: user.authProvider,
   };
   return jwt.sign(payload, jwtConfig.secret, {
     expiresIn: jwtConfig.expiresIn,
@@ -57,6 +54,29 @@ class AuthController {
       labId,
     } = req.body;
 
+    // FIXED: Validate email format
+    if (!email || typeof email !== 'string') {
+      return res.status(400).json({
+        success: false,
+        message: "Valid email is required.",
+      });
+    }
+
+    // Email validation regex
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid email format.",
+      });
+    }
+
+    // Trim and lowercase the email
+    const cleanEmail = email.trim().toLowerCase();
+
+    // Log to verify email is correct
+    logger.info(`Registration attempt with email: ${cleanEmail}`);
+
     // Validate role is a valid UserRole enum value
     const validRoles = Object.values(USER_ROLE_ENUM);
     if (role && !validRoles.includes(role)) {
@@ -66,13 +86,16 @@ class AuthController {
       });
     }
 
-    let existingUser = await prisma.user.findUnique({ where: { email } });
+    let existingUser = await prisma.user.findUnique({ where: { email: cleanEmail } });
 
-    if (existingUser && existingUser.emailVerified) {
-      return res.status(409).json({
-        success: false,
-        message: "User with this email already exists.",
-      });
+    if (existingUser) {
+      if (existingUser.emailVerified) {
+        return res.status(409).json({
+          success: false,
+          message: "An account with this email already exists and is verified. Please login instead.",
+        });
+      }
+      logger.info(`Updating unverified user registration: ${cleanEmail}`);
     }
 
     // Lab ID translation for Trainers and Lab Managers
@@ -131,7 +154,7 @@ class AuthController {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const baseUserData = {
-      email,
+      email: cleanEmail, // Use cleanEmail instead of email
       password: hashedPassword,
       firstName,
       lastName,
@@ -143,38 +166,58 @@ class AuthController {
         role === "LAB_MANAGER" || role === "TRAINER" ? instituteId : null,
       labId: labInternalId,
       emailVerified: false,
-      authProvider: "CREDENTIAL",
     };
 
-    const user = await prisma.user.upsert({
-      where: { email },
-      update: baseUserData,
-      create: baseUserData,
-    });
+    // Log the data being saved
+    logger.info(`Saving user with email: ${baseUserData.email}`);
+
+    let user;
+    try {
+      if (existingUser) {
+        // User exists but is not verified - update their data
+        user = await prisma.user.update({
+          where: { email: cleanEmail },
+          data: baseUserData,
+        });
+      } else {
+        // Create new user
+        user = await prisma.user.create({
+          data: baseUserData,
+        });
+      }
+      
+      // Log saved user to verify email
+      logger.info(`User saved successfully with email: ${user.email}`);
+    } catch (error) {
+      logger.error('Error creating/updating user:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'An error occurred during registration. Please try again.',
+      });
+    }
 
     const otp = generateOtp();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
     await prisma.oTP.updateMany({
-      where: { email, purpose: "REGISTRATION", isUsed: false },
+      where: { email: cleanEmail, purpose: "REGISTRATION", isUsed: false },
       data: { isUsed: true },
     });
 
     await prisma.oTP.create({
       data: {
-        email,
+        email: cleanEmail,
         otp,
         purpose: "REGISTRATION",
         expiresAt,
       },
     });
 
-    // FIXED: Use sendOTP instead of sendMail
-    EmailService.sendOTP(email, otp, "verification").catch((err) =>
+    EmailService.sendOTP(cleanEmail, otp, "verification").catch((err) =>
       logger.error("Failed to send OTP email:", err)
     );
 
-    logger.info(`New user registration initiated: ${email}. OTP sent.`);
+    logger.info(`New user registration initiated: ${cleanEmail}. OTP sent.`);
     res.status(201).json({
       success: true,
       message:
@@ -226,7 +269,6 @@ class AuthController {
         lastName: true,
         role: true,
         instituteId: true,
-        authProvider: true,
         institute: {
           select: {
             instituteId: true,
@@ -295,7 +337,6 @@ class AuthController {
       data: { email, otp, purpose, expiresAt },
     });
 
-    // FIXED: Use sendOTP with correct purpose
     const emailPurpose = purpose === "LOGIN" ? "login" : "verification";
     EmailService.sendOTP(email, otp, emailPurpose).catch((err) =>
       logger.error("Failed to send OTP email:", err)
@@ -317,13 +358,6 @@ class AuthController {
       return res.status(401).json({
         success: false,
         message: "Invalid email or password.",
-      });
-    }
-
-    if (user.authProvider && user.authProvider !== "CREDENTIAL") {
-      return res.status(401).json({
-        success: false,
-        message: `This account is registered with ${user.authProvider}. Please log in using that method.`,
       });
     }
 
@@ -371,7 +405,6 @@ class AuthController {
         data: { email, otp, purpose: "LOGIN", expiresAt },
       });
 
-      // FIXED: Use sendOTP('login') instead of sendOtpEmail
       EmailService.sendOTP(email, otp, "login").catch((err) =>
         logger.error("Failed to send OTP email:", err)
       );
@@ -393,7 +426,6 @@ class AuthController {
       instituteId: user.instituteId,
       department: user.department,
       labId: user.labId,
-      authProvider: user.authProvider,
     };
 
     const accessToken = generateAccessToken(userPayload);
@@ -454,7 +486,6 @@ class AuthController {
         instituteId: true,
         department: true,
         labId: true,
-        authProvider: true,
       },
     });
 
@@ -478,42 +509,6 @@ class AuthController {
       },
     });
   });
-
-  oauthCallback = asyncHandler(async (req, res, next) => {
-    const user = req.user;
-
-    if (!user) {
-      return res.redirect(
-        `${process.env.FRONTEND_URL}/login?error=authentication_failed`
-      );
-    }
-
-    const accessToken = generateAccessToken(user);
-    const refreshToken = generateRefreshToken(user);
-
-    res.cookie("refreshToken", refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
-
-    logger.info(
-      `User logged in via OAuth (${user.authProvider}): ${user.email}`
-    );
-
-    res.redirect(
-      `${process.env.FRONTEND_URL}/auth/callback?token=${accessToken}`
-    );
-  });
-
-  googleAuth = (req, res) => {
-    logger.debug("Redirecting to Google for authentication...");
-  };
-
-  githubAuth = (req, res) => {
-    logger.debug("Redirecting to GitHub for authentication...");
-  };
 
   getProfile = asyncHandler(async (req, res) => {
     if (!req.user || !req.user.userId) {
@@ -544,7 +539,6 @@ class AuthController {
         isActive: true,
         emailVerified: true,
         createdAt: true,
-        authProvider: true,
         lab: {
           select: {
             labId: true,
@@ -587,7 +581,6 @@ class AuthController {
         instituteId: true,
         department: true,
         labId: true,
-        authProvider: true,
       },
     });
 
@@ -616,7 +609,7 @@ class AuthController {
     if (!user.password) {
       return res.status(400).json({
         success: false,
-        message: "Cannot change password for OAuth accounts.",
+        message: "Cannot change password for this account.",
       });
     }
 
@@ -674,7 +667,6 @@ class AuthController {
         department: true,
         labId: true,
         isActive: true,
-        authProvider: true,
       },
     });
 
@@ -691,7 +683,6 @@ class AuthController {
       instituteId: user.instituteId,
       department: user.department,
       labId: user.labId,
-      authProvider: user.authProvider,
     };
     const accessToken = generateAccessToken(userPayload);
 

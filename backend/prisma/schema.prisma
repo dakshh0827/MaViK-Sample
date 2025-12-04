@@ -31,10 +31,11 @@ model Institute {
 }
 
 // ==================== USER MODEL (UPDATED) ====================
+// ==================== USER MODEL (OAUTH REMOVED) ====================
 model User {
   id            String       @id @default(auto()) @map("_id") @db.ObjectId
   email         String       @unique
-  password      String?
+  password      String       // Made required since we removed OAuth
   firstName     String
   lastName      String
   role          UserRole     @default(TRAINER)
@@ -54,17 +55,13 @@ model User {
   reorderRequests       ReorderRequest[]
   reviewedReorders      ReorderRequest[]     @relation("ReviewedBy")
   
-  // --- FIX: ADDED MISSING AUTH FIELDS ---
-  authProvider  AuthProvider @default(CREDENTIAL)
-  googleId      String?      @unique
-  githubId      String?      @unique
-  // --- END FIX ---
+  // REMOVED: OAuth fields (googleId, githubId, authProvider)
   
-  // ADDED: Missing reverse relations
-  notifications      Notification[]    // Reverse relation for Notification.user
-  maintenanceLogs    MaintenanceLog[]  // Reverse relation for MaintenanceLog.technician
-  reports            Report[]          // Reverse relation for Report.user
-  chatMessages       ChatMessage[]     // Reverse relation for ChatMessage.user
+  // Reverse relations
+  notifications      Notification[]
+  maintenanceLogs    MaintenanceLog[]
+  reports            Report[]
+  chatMessages       ChatMessage[]
   
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
@@ -73,6 +70,35 @@ model User {
   @@index([department])
   @@index([labId])
   @@map("users")
+}
+
+// ==================== OTP MODEL ====================
+model OTP {
+  id        String     @id @default(auto()) @map("_id") @db.ObjectId
+  email     String
+  otp       String
+  purpose   OTPPurpose
+  isUsed    Boolean    @default(false)
+  expiresAt DateTime
+  createdAt DateTime   @default(now())
+
+  @@index([email, purpose])
+  @@index([expiresAt])
+  @@map("otps")
+}
+
+// ==================== ENUMS ====================
+// REMOVED: AuthProvider enum
+
+enum OTPPurpose {
+  REGISTRATION
+  LOGIN
+}
+
+enum UserRole {
+  POLICY_MAKER   // Can manage labs, view all data across institutes
+  LAB_MANAGER    // Manages equipment in specific department/institute, cannot create/delete labs
+  TRAINER        // Views equipment in their specific lab
 }
 
 // ==================== LAB MODEL (UPDATED) ====================
@@ -95,42 +121,6 @@ model Lab {
 
   @@index([instituteId]) // UPDATED
   @@map("labs")
-}
-
-// (Rest of schema.prisma: OTP, Enums, Equipment, Analytics, etc. remains the same)
-// ... (omitted for brevity) ...
-
-// ==================== OTP MODEL ====================
-model OTP {
-  id        String     @id @default(auto()) @map("_id") @db.ObjectId
-  email     String
-  otp       String
-  purpose   OTPPurpose
-  isUsed    Boolean    @default(false)
-  expiresAt DateTime
-  createdAt DateTime   @default(now())
-
-  @@index([email, purpose])
-  @@index([expiresAt])
-  @@map("otps")
-}
-
-// ==================== ENUMS ====================
-enum AuthProvider {
-  CREDENTIAL
-  GOOGLE
-  GITHUB
-}
-
-enum OTPPurpose {
-  REGISTRATION
-  LOGIN
-}
-
-enum UserRole {
-  POLICY_MAKER   // Can manage labs, view all data across institutes
-  LAB_MANAGER    // Manages equipment in specific department/institute, cannot create/delete labs
-  TRAINER        // Views equipment in their specific lab
 }
 
 // ==================== DEPARTMENT ENUM (9 Departments) ====================
