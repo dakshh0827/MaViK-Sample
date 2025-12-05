@@ -18,7 +18,7 @@ import { useInstituteStore } from "../../stores/instituteStore";
 import { useBreakdownStore } from "../../stores/breakdownStore";
 import AlertsList from "../../components/dashboard/AlertsList";
 import LoadingSpinner from "../../components/common/LoadingSpinner";
-import LabManagerForm from "../../components/admin/labManagerForm";
+import LabManagerForm from "../../components/admin/LabManagerForm";
 import InstituteManagerForm from "../../components/admin/InstituteManagerForm";
 import api from "../../lib/axios";
 import {
