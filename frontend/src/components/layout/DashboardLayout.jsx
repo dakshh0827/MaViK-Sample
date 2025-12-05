@@ -19,7 +19,7 @@ import { useAuthStore } from "../../stores/authStore";
 
 // Import Modals
 import InstituteManagerForm from "../../components/admin/InstituteManagerForm";
-import LabManagerForm from "../../components/admin/labManagerForm";
+import LabManagerForm from "../../components/admin/LabManagerForm";
 
 export default function DashboardLayout() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
