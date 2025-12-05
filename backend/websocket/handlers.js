@@ -7,7 +7,7 @@ let io;
 const initializeSocketIO = (server) => {
   io = new Server(server, {
     cors: {
-      origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+      origin: 'https://ma-vi-k-sample.vercel.app',
       credentials: true,
     },
   });
