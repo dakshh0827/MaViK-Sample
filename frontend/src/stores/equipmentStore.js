@@ -18,7 +18,7 @@ export const useEquipmentStore = create((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       const params = new URLSearchParams();
-      
+
       if (filters.page) params.append("page", filters.page);
       if (filters.limit) params.append("limit", filters.limit);
       if (filters.department) params.append("department", filters.department);
@@ -28,18 +28,18 @@ export const useEquipmentStore = create((set, get) => ({
       if (filters.search) params.append("search", filters.search);
 
       const response = await api.get(`/equipment?${params.toString()}`);
-      
+
       set({
         equipment: response.data.data,
         pagination: response.data.pagination,
         isLoading: false,
       });
-      
+
       return response.data;
     } catch (error) {
-      set({ 
+      set({
         error: error.response?.data?.message || "Failed to fetch equipment",
-        isLoading: false 
+        isLoading: false,
       });
       throw error;
     }
@@ -56,68 +56,84 @@ export const useEquipmentStore = create((set, get) => ({
       });
       return response.data;
     } catch (error) {
-      set({ 
+      set({
         error: error.response?.data?.message || "Failed to fetch equipment",
-        isLoading: false 
+        isLoading: false,
       });
       throw error;
     }
   },
 
-  // Create new equipment
-createEquipment: async (data) => {
-  // Prevent multiple simultaneous calls
-  if (get().isLoading) return;
-  
-  set({ isLoading: true, error: null });
-  try {
-    const response = await api.post("/equipment", data);
-    
-    // Add to local state
-    set((state) => ({
-      equipment: [response.data.data, ...state.equipment],
-      isLoading: false,
-    }));
-    
-    return response.data;
-  } catch (error) {
-    const errorMessage = error.response?.data?.message || 
-                        error.response?.data?.errors?.[0]?.msg ||
-                        "Failed to create equipment";
-    set({ 
-      error: errorMessage,
-      isLoading: false 
-    });
-    throw new Error(errorMessage);
-  }
-},
+  // In equipmentStore.js, update createEquipment:
+  createEquipment: async (data) => {
+    // Prevent multiple simultaneous calls
+    if (get().isLoading) {
+      console.log("⏸️ Create equipment already in progress, skipping...");
+      return;
+    }
 
+    console.log("📦 [STORE] Received data for equipment creation:");
+    console.log(JSON.stringify(data, null, 2)); // Pretty print the data
+
+    set({ isLoading: true, error: null });
+    try {
+      console.log("🌐 [STORE] Making POST request to /equipment");
+      const response = await api.post("/equipment", data);
+
+      console.log("✅ [STORE] Equipment created successfully:", response.data);
+
+      // Add to local state
+      set((state) => ({
+        equipment: [response.data.data, ...state.equipment],
+        isLoading: false,
+      }));
+
+      return response.data;
+    } catch (error) {
+      console.error("❌ [STORE] Create equipment failed:");
+      console.error("Status:", error.response?.status);
+      console.error("Response data:", error.response?.data);
+      console.error("Full error:", error);
+
+      const errorMessage =
+        error.response?.data?.message ||
+        error.response?.data?.errors?.[0]?.msg ||
+        "Failed to create equipment";
+      set({
+        error: errorMessage,
+        isLoading: false,
+      });
+      throw new Error(errorMessage);
+    }
+  },
 
   // Update equipment
   updateEquipment: async (id, data) => {
     set({ isLoading: true, error: null });
     try {
       const response = await api.put(`/equipment/${id}`, data);
-      
+
       // Update in local state
       set((state) => ({
         equipment: state.equipment.map((eq) =>
           eq.id === id ? response.data.data : eq
         ),
-        selectedEquipment: state.selectedEquipment?.id === id 
-          ? response.data.data 
-          : state.selectedEquipment,
+        selectedEquipment:
+          state.selectedEquipment?.id === id
+            ? response.data.data
+            : state.selectedEquipment,
         isLoading: false,
       }));
-      
+
       return response.data;
     } catch (error) {
-      const errorMessage = error.response?.data?.message || 
-                          error.response?.data?.errors?.[0]?.msg ||
-                          "Failed to update equipment";
-      set({ 
+      const errorMessage =
+        error.response?.data?.message ||
+        error.response?.data?.errors?.[0]?.msg ||
+        "Failed to update equipment";
+      set({
         error: errorMessage,
-        isLoading: false 
+        isLoading: false,
       });
       throw new Error(errorMessage);
     }
@@ -128,19 +144,18 @@ createEquipment: async (data) => {
     set({ isLoading: true, error: null });
     try {
       await api.delete(`/equipment/${id}`);
-      
+
       // Remove from local state
       set((state) => ({
         equipment: state.equipment.filter((eq) => eq.id !== id),
-        selectedEquipment: state.selectedEquipment?.id === id 
-          ? null 
-          : state.selectedEquipment,
+        selectedEquipment:
+          state.selectedEquipment?.id === id ? null : state.selectedEquipment,
         isLoading: false,
       }));
     } catch (error) {
-      set({ 
+      set({
         error: error.response?.data?.message || "Failed to delete equipment",
-        isLoading: false 
+        isLoading: false,
       });
       throw error;
     }

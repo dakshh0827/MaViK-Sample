@@ -1,12 +1,13 @@
 /*
  * =====================================================
- * backend/middlewares/auth.js (FIXED)
+ * backend/middlewares/auth.js (FIXED - Database Fetch)
  * =====================================================
  */
 import jwt from "jsonwebtoken";
+import prisma from "../config/database.js";
 import logger from "../utils/logger.js";
 
-const authMiddleware = (req, res, next) => {
+const authMiddleware = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
 
@@ -27,27 +28,61 @@ const authMiddleware = (req, res, next) => {
     }
 
     // Verify token
-    // --- FIX: Use JWT_SECRET, not JWT_ACCESS_SECRET, to match signing secret
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    // CRITICAL: Ensure req.user has all necessary fields
+    // CRITICAL FIX: Fetch fresh user data from database instead of relying on token
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.userId || decoded.id },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        role: true,
+        department: true,
+        instituteId: true,  // This is the string field (e.g., "ITI_PUSA")
+        labId: true,
+        isActive: true,
+      },
+    });
+
+    // Check if user exists and is active
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: "User not found. Please login again.",
+      });
+    }
+
+    if (!user.isActive) {
+      return res.status(403).json({
+        success: false,
+        message: "Account has been deactivated.",
+      });
+    }
+
+    // Set req.user with fresh database data
     req.user = {
-      userId: decoded.userId || decoded.id, // Support both userId and id
-      id: decoded.userId || decoded.id, // Also set id for compatibility
-      email: decoded.email,
-      role: decoded.role,
-      instituteId: decoded.instituteId || decoded.institute,
-      institute: decoded.institute || decoded.instituteId,
-      department: decoded.department,
-      labId: decoded.labId,
-      authProvider: decoded.authProvider, // --- FIX: Added authProvider
+      id: user.id,
+      userId: user.id, // For backward compatibility
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      role: user.role,
+      institute: user.instituteId,  // ← Use instituteId (string) as institute
+      instituteId: user.instituteId, // Also provide instituteId
+      department: user.department,
+      labId: user.labId,
     };
 
-    // Log for debugging (remove in production)
-    logger.debug("Auth middleware - req.user:", {
-      userId: req.user.userId,
+    // Debug logging
+    console.log("✅ Auth Middleware - User authenticated:", {
+      id: req.user.id,
       email: req.user.email,
       role: req.user.role,
+      institute: req.user.institute,
+      department: req.user.department,
+      labId: req.user.labId,
     });
 
     next();

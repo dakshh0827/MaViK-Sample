@@ -200,125 +200,166 @@ class EquipmentController {
   });
 
   // Create new equipment
-  createEquipment = asyncHandler(async (req, res) => {
-    const {
+// Update the createEquipment function in equipment.controller.js
+
+createEquipment = asyncHandler(async (req, res) => {
+  const {
+    equipmentId,
+    name,
+    department,
+    equipmentName,
+    manufacturer,
+    model,
+    serialNumber,
+    purchaseDate,
+    warrantyExpiry,
+    labId,
+    specifications,
+    imageUrl,
+  } = req.body;
+
+  // Validate equipment ID uniqueness
+  const existing = await prisma.equipment.findUnique({
+    where: { equipmentId },
+  });
+  if (existing) {
+    return res.status(409).json({
+      success: false,
+      message: "Equipment ID already exists.",
+    });
+  }
+
+  // Validate and translate labId
+  if (!labId) {
+    return res.status(400).json({
+      success: false,
+      message: "labId is required.",
+    });
+  }
+
+  const lab = await prisma.lab.findUnique({
+    where: { labId: labId.trim() },
+  });
+
+  if (!lab) {
+    return res.status(400).json({
+      success: false,
+      message: `Invalid Lab ID provided: "${labId}". Please check and try again.`,
+    });
+  }
+
+  // ===== SECURITY CHECKS =====
+  console.log("🔍 Security Check Debug:");
+  console.log("User Role:", req.user.role);
+  console.log("User Institute:", req.user.institute);
+  console.log("User Department:", req.user.department);
+  console.log("Lab InstituteId:", lab.instituteId);
+  console.log("Lab Department:", lab.department);
+
+  // Security check: LAB_MANAGER can only add to their own institute
+  if (req.user.role === "LAB_MANAGER") {
+    // Check if user has institute configured
+    if (!req.user.institute) {
+      console.error("❌ User has no institute configured");
+      return res.status(403).json({
+        success: false,
+        message: "Your account is not associated with an institute. Please contact administrator.",
+      });
+    }
+
+    // Check if user has department configured
+    if (!req.user.department) {
+      console.error("❌ User has no department configured");
+      return res.status(403).json({
+        success: false,
+        message: "Your account is not associated with a department. Please contact administrator.",
+      });
+    }
+
+    // Compare institutes (both should be strings)
+    if (lab.instituteId !== req.user.institute) {
+      console.error("❌ Institute mismatch:", {
+        userInstitute: req.user.institute,
+        labInstitute: lab.instituteId,
+        match: lab.instituteId === req.user.institute,
+      });
+      return res.status(403).json({
+        success: false,
+        message: `You can only add equipment to your own institute. Your institute: ${req.user.institute}, Lab institute: ${lab.instituteId}`,
+      });
+    }
+
+    // Compare departments
+    if (lab.department !== req.user.department) {
+      console.error("❌ Department mismatch:", {
+        userDepartment: req.user.department,
+        labDepartment: lab.department,
+        match: lab.department === req.user.department,
+      });
+      return res.status(403).json({
+        success: false,
+        message: `You can only add equipment to labs in your department. Your department: ${req.user.department}, Lab department: ${lab.department}`,
+      });
+    }
+
+    console.log("✅ Security checks passed for LAB_MANAGER");
+  }
+
+  // Validate department matches lab department
+  if (department !== lab.department) {
+    return res.status(400).json({
+      success: false,
+      message: `Equipment department must match lab department (${lab.department}).`,
+    });
+  }
+
+  // Build department-specific field
+  const departmentField = buildDepartmentField(department, equipmentName);
+
+  // Create equipment with status
+  const equipment = await prisma.equipment.create({
+    data: {
       equipmentId,
       name,
       department,
-      equipmentName, // Department-specific equipment name enum
+      ...departmentField,
       manufacturer,
       model,
-      serialNumber,
-      purchaseDate,
-      warrantyExpiry,
-      labId, // Public string labId
-      specifications,
-      imageUrl,
-    } = req.body;
-
-    // Validate equipment ID uniqueness
-    const existing = await prisma.equipment.findUnique({
-      where: { equipmentId },
-    });
-    if (existing) {
-      return res.status(409).json({
-        success: false,
-        message: "Equipment ID already exists.",
-      });
-    }
-
-    // Validate and translate labId
-    if (!labId) {
-      return res.status(400).json({
-        success: false,
-        message: "labId is required.",
-      });
-    }
-
-    const lab = await prisma.lab.findUnique({
-      where: { labId: labId.trim() },
-    });
-
-    if (!lab) {
-      return res.status(400).json({
-        success: false,
-        message: `Invalid Lab ID provided: "${labId}". Please check and try again.`,
-      });
-    }
-
-    // Security check: LAB_MANAGER can only add to their own institute
-    if (req.user.role === "LAB_MANAGER") {
-      if (lab.institute !== req.user.institute) {
-        return res.status(403).json({
-          success: false,
-          message: "You can only add equipment to your own institute.",
-        });
-      }
-
-      // LAB_MANAGER can only add to their department
-      if (lab.department !== req.user.department) {
-        return res.status(403).json({
-          success: false,
-          message: "You can only add equipment to labs in your department.",
-        });
-      }
-    }
-
-    // Validate department matches lab department
-    if (department !== lab.department) {
-      return res.status(400).json({
-        success: false,
-        message: `Equipment department must match lab department (${lab.department}).`,
-      });
-    }
-
-    // Build department-specific field
-    const departmentField = buildDepartmentField(department, equipmentName);
-
-    // Create equipment with status
-    const equipment = await prisma.equipment.create({
-      data: {
-        equipmentId,
-        name,
-        department,
-        ...departmentField, // Add department-specific equipment name
-        manufacturer,
-        model,
-        serialNumber: serialNumber || null,
-        purchaseDate: new Date(purchaseDate),
-        warrantyExpiry: warrantyExpiry ? new Date(warrantyExpiry) : null,
-        labId: lab.id, // Use internal ObjectId
-        specifications: specifications || null,
-        imageUrl: imageUrl || null,
-        isActive: true,
-        status: {
-          create: {
-            status: "IDLE",
-            healthScore: 100,
-            isOperatingInClass: false,
-          },
+      serialNumber: serialNumber || null,
+      purchaseDate: new Date(purchaseDate),
+      warrantyExpiry: warrantyExpiry ? new Date(warrantyExpiry) : null,
+      labId: lab.id, // Use internal ObjectId
+      specifications: specifications || null,
+      imageUrl: imageUrl || null,
+      isActive: true,
+      status: {
+        create: {
+          status: "IDLE",
+          healthScore: 100,
+          isOperatingInClass: false,
         },
       },
-      include: {
-        status: true,
-        lab: {
-          select: {
-            labId: true,
-            name: true,
-            institute: true,
-            department: true,
-          },
+    },
+    include: {
+      status: true,
+      lab: {
+        select: {
+          labId: true,
+          name: true,
+          institute: true,
+          department: true,
         },
       },
-    });
-
-    logger.info(`Equipment created: ${equipmentId} by ${req.user.email}`);
-    res.status(201).json({
-      success: true,
-      message: "Equipment created successfully.",
-      data: equipment,
-    });
+    },
   });
+
+  logger.info(`Equipment created: ${equipmentId} by ${req.user.email}`);
+  res.status(201).json({
+    success: true,
+    message: "Equipment created successfully.",
+    data: equipment,
+  });
+});
 
   // Update equipment
   updateEquipment = asyncHandler(async (req, res) => {

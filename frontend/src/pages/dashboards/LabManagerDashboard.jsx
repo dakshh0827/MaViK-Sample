@@ -472,7 +472,7 @@ export default function LabManagerDashboard() {
       : labs.find((l) => l.labId === selectedLabId)?.name || "Unknown Lab";
 
   return (
-    <div className="h-[calc(100vh-6rem)] flex flex-col bg-gray-50 overflow-hidden p-1 gap-4 w-full">
+    <div className="h-[calc(100vh-6rem)] flex flex-col bg-gray-200 overflow-hidden p-1 gap-4 w-full">
       {/* --- ROW 1: 40% Height --- */}
       <div className="flex-none h-[40%] grid grid-cols-12 gap-4 min-h-0">
         <div className="col-span-3 h-full grid grid-cols-2 gap-3">

@@ -144,7 +144,7 @@ export default function DashboardLayout() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 overflow-x-hidden">
+    <div className="min-h-screen bg-gray-200 overflow-x-hidden">
       {/* SIDEBAR */}
       <aside
         className={`

@@ -275,6 +275,18 @@ export default function EquipmentFormModal({
     setError("");
 
     try {
+      // DEBUGGING: Check current user state
+      console.log("🔍 Current user state:", {
+        userId: user?.id,
+        userInstitute: user?.institute,
+        userRole: user?.role,
+        labId: formData.labId,
+      });
+
+      // DEBUGGING: Check if token is fresh
+      const tokenCheck = await api.get("/auth/profile");
+      console.log("🔑 Token verification:", tokenCheck.data.data);
+
       const requiredFields = [
         "equipmentId",
         "name",
@@ -309,15 +321,21 @@ export default function EquipmentFormModal({
         equipmentName: formData.equipmentName || undefined,
       };
 
+      // ADDED: Log exactly what's being sent
+      console.log("📤 Submitting equipment data:", submitData);
+
       if (isEditing) {
         const { equipmentId, ...updateData } = submitData;
+        console.log("📝 Updating equipment:", equipment.id, updateData);
         await onSubmit(equipment.id, updateData);
       } else {
+        console.log("➕ Creating new equipment:", submitData);
         await onSubmit(submitData);
       }
 
       onClose();
     } catch (err) {
+      console.error("❌ Submit error:", err);
       setError(err.message || "Failed to save equipment");
     } finally {
       setIsLoading(false);
